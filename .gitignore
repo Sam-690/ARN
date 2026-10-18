@@ -1,0 +1,12 @@
+node_modules/
+.next/
+dist/
+.env
+.env.*
+!.env.example
+.local/
+*.tsbuildinfo
+.DS_Store
+tmp/
+test-results/
+apps/web/public/pdfjs/

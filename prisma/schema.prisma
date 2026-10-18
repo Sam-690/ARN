@@ -1,0 +1,492 @@
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
+model User {
+ id String @id @default(cuid())
+ email String @unique
+ name String
+ passwordHash String
+ role String @default("VIEWER")
+ active Boolean @default(true)
+ mustChangePassword Boolean @default(true)
+ revision Int @default(0)
+ memberships ProjectMember[]
+ sessions Session[]
+ createdAt DateTime @default(now())
+}
+model Session {
+ id String @id
+ userId String
+ user User @relation(fields:[userId], references:[id], onDelete: Cascade)
+ expiresAt DateTime
+}
+model ProjectMember {
+ userId String
+ projectId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+ @@id([userId,projectId])
+}
+
+model Project {
+ members ProjectMember[]
+ id String @id @default(cuid())
+ code String @unique
+ name String
+ client String
+ location String
+ manager String
+ status String @default("ACTIVE")
+ startDate DateTime
+ endDate DateTime
+ budgetApproved Boolean @default(false)
+ createdAt DateTime @default(now())
+ budgetItems BudgetItem[]
+ orders PurchaseOrder[]
+ stocks Stock[]
+ movements Movement[]
+ logs SiteLog[]
+ experiences ExperienceRecord[]
+ documents SourceDocument[]
+ changes ChangeRequest[]
+ drawings Drawing[]
+ needs SupplyNeed[]
+ outboundTransfers StockTransfer[] @relation("TransferOrigin")
+ inboundTransfers StockTransfer[] @relation("TransferDestination")
+ @@index([status, createdAt])
+}
+model Material {
+ id String @id @default(cuid())
+ code String @unique
+ name String
+ unit String
+ type String @default("MATERIAL")
+ price Decimal @db.Decimal(18,4)
+ stocks Stock[]
+ lines OrderLine[]
+ movements Movement[]
+ needs SupplyNeed[]
+ transfers StockTransfer[]
+}
+model BudgetItem {
+ experiences ExperienceRecord[]
+ logs SiteLog[]
+ id String @id @default(cuid())
+ projectId String
+ project Project @relation(fields:[projectId], references:[id])
+ code String
+ name String
+ unit String
+ quantity Decimal @db.Decimal(18,4)
+ unitPrice Decimal @db.Decimal(18,4)
+ components Json
+ createdAt DateTime @default(now())
+ @@unique([projectId,code])
+}
+model PurchaseOrder {
+ id String @id @default(cuid())
+ number Int @unique @default(autoincrement())
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ supplier String
+ expectedDate DateTime
+ status String @default("DRAFT")
+ createdAt DateTime @default(now())
+ lines OrderLine[]
+ payments Payment[]
+ @@index([projectId, createdAt])
+}
+model OrderLine {
+ id String @id @default(cuid())
+ orderId String
+ order PurchaseOrder @relation(fields:[orderId],references:[id])
+ materialId String
+ material Material @relation(fields:[materialId],references:[id])
+ quantity Decimal @db.Decimal(18,4)
+ received Decimal @default(0) @db.Decimal(18,4)
+ unitPrice Decimal @db.Decimal(18,4)
+}
+model Stock {
+ id String @id @default(cuid())
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ materialId String
+ material Material @relation(fields:[materialId],references:[id])
+ quantity Decimal @default(0) @db.Decimal(18,4)
+ released Decimal @default(0) @db.Decimal(18,4)
+ averageCost Decimal @default(0) @db.Decimal(18,4)
+ @@unique([projectId,materialId])
+}
+model Movement {
+ allocations ExperienceAllocation[]
+ id String @id @default(cuid())
+ needId String?
+ need SupplyNeed? @relation(fields:[needId],references:[id])
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ materialId String
+ material Material @relation(fields:[materialId],references:[id])
+ type String
+ quantity Decimal @db.Decimal(18,4)
+ unitCost Decimal @db.Decimal(18,4)
+ reference String
+ createdAt DateTime @default(now())
+ @@index([projectId,createdAt])
+}
+model Payment {
+ id String @id @default(cuid())
+ orderId String
+ order PurchaseOrder @relation(fields:[orderId],references:[id])
+ amount Decimal @db.Decimal(18,2)
+ reference String
+ method String
+ paidAt DateTime
+ createdAt DateTime @default(now())
+ @@unique([orderId,reference])
+}
+model SiteLog {
+ front String @default("")
+ budgetItemId String?
+ budgetItem BudgetItem? @relation(fields:[budgetItemId],references:[id])
+ attachments LogAttachment[]
+ addenda LogAddendum[]
+ id String @id @default(cuid())
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ date DateTime
+ title String
+ activities String
+ incident String @default("")
+ crew Int
+ weather String
+ author String
+ status String @default("DRAFT")
+ createdAt DateTime @default(now())
+ @@index([projectId,date])
+}
+model Audit {
+ id String @id @default(cuid())
+ actor String
+ action String
+ entityId String
+ detail String
+ createdAt DateTime @default(now())
+ @@index([createdAt])
+}
+model Command {
+ id String @id
+ fingerprint String
+ result Json
+ createdAt DateTime @default(now())
+}
+
+model SupplyNeed {
+ id String @id @default(cuid())
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ materialId String
+ material Material @relation(fields:[materialId],references:[id])
+ quantity Decimal @db.Decimal(18,4)
+ consumed Decimal @default(0) @db.Decimal(18,4)
+ neededOn DateTime
+ leadDays Int
+ purpose String
+ status String @default("OPEN")
+ createdAt DateTime @default(now())
+ movements Movement[]
+ @@index([projectId, materialId, neededOn])
+}
+
+model StockTransfer {
+ id String @id @default(cuid())
+ number Int @unique @default(autoincrement())
+ fromProjectId String
+ fromProject Project @relation("TransferOrigin",fields:[fromProjectId],references:[id])
+ toProjectId String
+ toProject Project @relation("TransferDestination",fields:[toProjectId],references:[id])
+ materialId String
+ material Material @relation(fields:[materialId],references:[id])
+ quantity Decimal @db.Decimal(18,4)
+ unitCost Decimal @db.Decimal(18,4)
+ reference String
+ status String @default("IN_TRANSIT")
+ dispatchedBy String
+ receivedBy String?
+ receivedAt DateTime?
+ receiptReference String?
+ createdAt DateTime @default(now())
+ @@index([fromProjectId, status])
+ @@index([toProjectId, status])
+}
+
+model LogAddendum {
+ id String @id @default(cuid())
+ logId String
+ log SiteLog @relation(fields:[logId],references:[id])
+ text String
+ author String
+ createdAt DateTime @default(now())
+ sourceAttachmentId String? @unique
+ sourceAttachment LogAttachment? @relation("TranscriptionSource",fields:[sourceAttachmentId],references:[id])
+ attachments LogAttachment[] @relation("AddendumEvidence")
+ @@index([logId,createdAt])
+}
+model LogAttachment {
+ id String @id @default(cuid())
+ logId String
+ log SiteLog @relation(fields:[logId],references:[id])
+ addendumId String?
+ addendum LogAddendum? @relation("AddendumEvidence",fields:[addendumId],references:[id])
+ name String
+ mime String
+ size Int
+ sha256 String
+ caption String
+ content Bytes
+ author String
+ createdAt DateTime @default(now())
+ transcript String?
+ transcriptionStatus String @default("NONE")
+ transcriptionStartedAt DateTime?
+ publishedAddendum LogAddendum? @relation("TranscriptionSource")
+ @@unique([logId,sha256])
+ @@index([logId,createdAt])
+}
+
+model Drawing {
+ id String @id @default(cuid())
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ code String
+ name String
+ createdAt DateTime @default(now())
+ versions DrawingVersion[]
+ @@unique([projectId,code])
+}
+model DrawingVersion {
+ id String @id @default(cuid())
+ drawingId String
+ drawing Drawing @relation(fields:[drawingId],references:[id])
+ number Int
+ label String
+ note String
+ name String
+ size Int
+ sha256 String
+ pageCount Int
+ content Bytes
+ author String
+ createdAt DateTime @default(now())
+ issues PlanIssue[]
+ @@unique([drawingId,number])
+ @@unique([drawingId,sha256])
+}
+model PlanIssue {
+ id String @id @default(cuid())
+ number Int @unique @default(autoincrement())
+ versionId String
+ version DrawingVersion @relation(fields:[versionId],references:[id])
+ page Int
+ x Float
+ y Float
+ title String
+ description String
+ assignee String
+ dueDate DateTime
+ priority String
+ status String @default("OPEN")
+ revision Int @default(0)
+ author String
+ createdAt DateTime @default(now())
+ events IssueEvent[]
+ @@index([versionId,status])
+}
+model IssueEvent {
+ id String @id @default(cuid())
+ issueId String
+ issue PlanIssue @relation(fields:[issueId],references:[id])
+ action String
+ note String
+ author String
+ assignee String
+ dueDate DateTime
+ createdAt DateTime @default(now())
+ evidence IssueEvidence[]
+ @@index([issueId,createdAt])
+}
+model IssueEvidence {
+ id String @id @default(cuid())
+ eventId String
+ event IssueEvent @relation(fields:[eventId],references:[id])
+ name String
+ mime String
+ size Int
+ sha256 String
+ content Bytes
+ @@unique([eventId,sha256])
+}
+
+model ChangeRequest {
+ id String @id @default(cuid())
+ number Int @unique @default(autoincrement())
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ title String
+ reason String
+ author String
+ status String @default("DRAFT")
+ revision Int @default(0)
+ progress Int @default(0)
+ createdAt DateTime @default(now())
+ proposals ChangeProposal[]
+ events ChangeEvent[]
+ settlements ChangeSettlement[]
+}
+model ChangeProposal {
+ id String @id @default(cuid())
+ changeId String
+ change ChangeRequest @relation(fields:[changeId],references:[id])
+ number Int
+ scope String
+ costDelta Decimal @db.Decimal(18,2)
+ priceDelta Decimal @db.Decimal(18,2)
+ daysDelta Int
+ author String
+ createdAt DateTime @default(now())
+ @@unique([changeId,number])
+}
+model ChangeEvent {
+ id String @id @default(cuid())
+ changeId String
+ change ChangeRequest @relation(fields:[changeId],references:[id])
+ action String
+ note String
+ actor String
+ proposalNumber Int
+ progress Int?
+ authorizationBy String?
+ authorizationReference String?
+ createdAt DateTime @default(now())
+ @@index([changeId,createdAt])
+}
+model ChangeSettlement {
+ id String @id @default(cuid())
+ changeId String
+ change ChangeRequest @relation(fields:[changeId],references:[id])
+ amount Decimal @db.Decimal(18,2)
+ reference String
+ date DateTime
+ note String
+ actor String
+ createdAt DateTime @default(now())
+ @@unique([changeId,reference])
+}
+
+model SourceDocument {
+ id String @id @default(cuid())
+ number Int @unique @default(autoincrement())
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ name String
+ mime String
+ size Int
+ sha256 String @unique
+ content Bytes
+ status String @default("DRAFT")
+ revision Int @default(0)
+ extractionStatus String @default("NONE")
+ extractionStartedAt DateTime?
+ extracted Json?
+ reviewed Json?
+ identityKey String? @unique
+ orderId String?
+ author String
+ createdAt DateTime @default(now())
+ events DocumentEvent[]
+ @@index([projectId,createdAt])
+}
+model DocumentEvent {
+ id String @id @default(cuid())
+ documentId String
+ document SourceDocument @relation(fields:[documentId],references:[id])
+ action String
+ note String
+ actor String
+ snapshot Json?
+ createdAt DateTime @default(now())
+ @@index([documentId,createdAt])
+}
+
+model ExperienceFamily {
+ id String @id @default(cuid())
+ code String
+ name String
+ unit String
+ version String
+ method String
+ conditions String
+ author String
+ createdAt DateTime @default(now())
+ records ExperienceRecord[]
+ @@unique([code,version])
+}
+model ExperienceRecord {
+ id String @id @default(cuid())
+ number Int @unique @default(autoincrement())
+ projectId String
+ project Project @relation(fields:[projectId],references:[id])
+ budgetItemId String
+ budgetItem BudgetItem @relation(fields:[budgetItemId],references:[id])
+ familyId String
+ family ExperienceFamily @relation(fields:[familyId],references:[id])
+ reference String
+ front String
+ frontKey String
+ startDate DateTime
+ endDate DateTime
+ quantity Decimal @db.Decimal(18,4)
+ isTest Boolean @default(true)
+ coverage String
+ laborCost Decimal @db.Decimal(18,2)
+ equipmentCost Decimal @db.Decimal(18,2)
+ otherCost Decimal @db.Decimal(18,2)
+ laborHours Decimal? @db.Decimal(18,4)
+ costReference String
+ note String
+ plannedUnitPrice Decimal @db.Decimal(18,4)
+ budgetSnapshot Json
+ budgetHash String
+ status String @default("RECORDED")
+ revision Int @default(0)
+ author String
+ createdAt DateTime @default(now())
+ allocations ExperienceAllocation[]
+ events ExperienceEvent[]
+ @@unique([projectId,reference])
+ @@index([budgetItemId,status])
+}
+model ExperienceAllocation {
+ id String @id @default(cuid())
+ recordId String
+ record ExperienceRecord @relation(fields:[recordId],references:[id])
+ movementId String
+ movement Movement @relation(fields:[movementId],references:[id])
+ quantity Decimal @db.Decimal(18,4)
+ unitCost Decimal @db.Decimal(18,4)
+ @@unique([recordId,movementId])
+ @@index([movementId])
+}
+model ExperienceEvent {
+ id String @id @default(cuid())
+ recordId String
+ record ExperienceRecord @relation(fields:[recordId],references:[id])
+ action String
+ note String
+ actor String
+ createdAt DateTime @default(now())
+ @@index([recordId,createdAt])
+}
