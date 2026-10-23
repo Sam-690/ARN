@@ -54,7 +54,6 @@ Se aplicó a la aplicación el diseño Noche, con paletas clara y oscura, acento
 
 El cambio abarca navegación, paneles, tablas, estados, formularios y diálogos. No modifica las operaciones de negocio ni los datos. Se verificaron compilación de producción, tipos, cuatro pruebas unitarias existentes y el cambio de apariencia con recarga, formularios y adaptación móvil.
 
-
 ## Entrega 0.2 · Abastecimiento y traspasos · 12 de octubre de 2026
 
 Primer bloque elegido por el usuario dentro de la ampliación de ocho frentes. El resto permanece planificado en [AMPLIACION_DEL_PRODUCTO.md](AMPLIACION_DEL_PRODUCTO.md).
@@ -144,7 +143,6 @@ Límites: 200 solicitudes por obra, 30 revisiones y 200 eventos por solicitud; c
 
 Validación visual de Cambios de obra: temas claro y oscuro revisados; vista móvil de 390 × 844 sin desbordamiento horizontal (ancho del documento: 390 px). Se restauraron el tema oscuro y el tamaño normal del navegador. Capturas en output/changes-review/cambios-claro.png, cambios-oscuro.png y cambios-movil.png.
 
-
 ## Entrega 0.6 · Captura de documentos · 15 de octubre de 2026
 
 El portal del cliente queda pospuesto por decisión del usuario. Se implementó la base de captura documental en su lugar.
@@ -166,7 +164,6 @@ Prueba visual: DOC-1 cotizacion-demo.pdf, datos ficticios de Materiales Demo, DE
 Límites pendientes: no hay catálogo de proveedores/RFC, equivalencias aprendidas, lectura local OCR, XML/validación SAT, notas de crédito, múltiples órdenes por documento, importes cero, moneda extranjera, descuentos globales, reversos de recepciones ni colas persistentes. Máximo 200 documentos por obra y 100 partidas por documento. Solo existe el administrador del piloto; almacenamiento de objetos, antivirus/aislamiento de archivos y permisos por obra siguen pendientes de producción. Configurar y evaluar el proveedor con documentos representativos es necesario antes de confiar en la lectura automática.
 
 Referencias de integración: https://developers.openai.com/api/docs/guides/file-inputs y https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses.
-
 
 ## Entrega 0.7 · Biblioteca de experiencia · 16 de octubre de 2026
 
@@ -213,3 +210,21 @@ Revisión visual 0.8: escenario de cemento en Los Olivos detecta historia insufi
 Límites de esta entrega: una empresa; roles globales por cuenta y asignaciones por obra, sin perfiles distintos por obra. No hay invitaciones por correo, recuperación automática, MFA, SSO ni caducidad administrativa de accesos. El catálogo compartido no es confidencial entre perfiles internos. Responsables escritos en bitácoras/planos siguen siendo nombres de referencia, no asignaciones automáticas de acceso. No se puede retirar información ya descargada; la revocación bloquea solicitudes siguientes. El despliegue de producción y respaldos continúan pendientes. El portal del cliente queda fuera del alcance actual por decisión del usuario.
 
 Revisión de interfaz 0.9: cuenta administradora conservada, formulario de nuevo usuario con siete perfiles y selección de obras, cancelación sin crear cuentas, descripciones de permisos y acceso a cambio de contraseña. Se revisaron escritorio oscuro y móvil claro de 390 px, sin desbordamiento horizontal. Capturas en `output/team-review/`. El cambio de contraseña y los perfiles limitados se validaron mediante integración en la base aislada; no se modificaron credenciales de la cuenta principal durante la revisión visual.
+
+## 18 de octubre de 2026 — Expediente PDF de bitácoras
+
+- Sustituida la exportación tabular de bitácoras por un expediente A4 con portada, índice, paginación, textos completos, fotografías, adendas y constancia de entrega.
+- Selección de una obra, rango de fechas, nombre opcional de empresa, fotos y borradores. Descarga individual desde el detalle.
+- Fotos orientadas y ajustadas sin recortar; audios referidos como anexos digitales, sin publicar transcripciones pendientes. Registros originales intactos.
+- API autenticada y limitada a obras autorizadas, 30 registros / 100 MB de fotos / 400 páginas. Fuentes locales con licencia incluida.
+- Pruebas unitarias y de integración cubren paginación, fotos dañadas, fechas, filtros, usuarios de consulta y acceso entre obras. Muestra ficticia revisada visualmente en `output/pdf/Expediente_bitacoras_muestra.pdf`.
+
+## 19 de octubre de 2026 — Retiro del módulo Asistente IA
+
+Por decisión del usuario se revirtió la incorporación del módulo Asistente IA: navegación, interfaz, endpoint, configuración y pruebas específicas. Se conservan el expediente PDF de bitácoras, el pronóstico determinista de abastecimiento y las integraciones opcionales anteriores de transcripción y lectura documental. No se modificaron registros ni el esquema de la base de datos. La incorporación del asistente queda pospuesta.
+
+## 19 de octubre de 2026 — Captura en ventanas emergentes
+
+Se unificaron las capturas que aún se desplegaban en la página: documentos, planos y versiones, incidencias/seguimiento, solicitudes y acciones de cambios, grupos y ejecución de experiencia, usuarios y alternativas de abastecimiento. Usan un diálogo nativo compartido con fondo bloqueado, cierre por Escape, restauración del foco, desplazamiento interno y errores visibles dentro de la ventana. El cierre se bloquea mientras hay una operación en curso. Las altas de obras, presupuesto, compras, almacén, pagos y bitácoras conservan sus ventanas existentes. Sin cambios de API ni de datos.
+
+Verificación: compilación y tipos correctos; apertura/cierre y validación requerida comprobados en navegador para documentos, grupos, ejecución, planos/versiones, solicitudes de cambio y usuarios. Se cancelaron las capturas de comprobación sin crear registros.

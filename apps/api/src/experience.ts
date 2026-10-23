@@ -1,15 +1,172 @@
-import {z} from 'zod';
-import {Prisma} from '@prisma/client';
-import {D} from './domain';
-import {dateValue} from './plans';
-const text=z.string().trim().min(1).max(200);
-const quantity=z.number().finite().positive().max(100000000).refine(n=>Math.abs(n*10000-Math.round(n*10000))<.001,'Máximo 4 decimales');
-const money=z.number().finite().min(0).max(100000000).refine(n=>Math.abs(n*100-Math.round(n*100))<.001,'Máximo 2 decimales');
-export const normalizeExperience=(v:string)=>v.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
-export const familySchema=z.object({code:text.max(24).transform(v=>v.toUpperCase()),name:text,unit:text.max(16),version:text.max(40),method:z.string().trim().min(1).max(2000),conditions:z.string().trim().min(1).max(2000)});
-export const experienceSchema=z.object({projectId:text,budgetItemId:text,familyId:text,reference:text,front:text,startDate:dateValue,endDate:dateValue,quantity,isTest:z.boolean(),coverage:z.enum(['MATERIAL_ONLY','DIRECT_COMPLETE']),laborCost:money,equipmentCost:money,otherCost:money,laborHours:quantity.nullable(),costReference:z.string().trim().max(2000),note:z.string().trim().min(1).max(2000),confirmed:z.literal(true),allocations:z.array(z.object({movementId:text,quantity})).max(100)}).superRefine((v,c)=>{if(v.endDate<v.startDate)c.addIssue({code:'custom',message:'El periodo final debe ser posterior al inicial'});if(new Set(v.allocations.map(a=>a.movementId)).size!==v.allocations.length)c.addIssue({code:'custom',message:'No repitas una salida; asigna una sola cantidad por salida'});if(v.coverage==='MATERIAL_ONLY'&&(v.laborCost||v.equipmentCost||v.otherCost||v.laborHours))c.addIssue({code:'custom',message:'El registro solo de materiales no admite costos u horas de mano de obra/equipo'});if((v.laborCost||v.equipmentCost||v.otherCost||v.laborHours)&&!v.costReference)c.addIssue({code:'custom',message:'Indica la fuente de costos y horas'});if(v.coverage==='MATERIAL_ONLY'&&!v.allocations.length)c.addIssue({code:'custom',message:'Asigna al menos una salida de material'});});
-export const experienceInclude={project:true,family:true,allocations:{include:{movement:{include:{material:true}}}},events:{orderBy:{createdAt:'asc' as const}}};
-type Allocation={quantity:Prisma.Decimal.Value;unitCost:Prisma.Decimal.Value;movement:{materialId:string;material:{name:string;unit:string}}};
-type Sample={id:string;projectId:string;familyId:string;status:string;isTest:boolean;coverage:string;quantity:Prisma.Decimal.Value;laborCost:Prisma.Decimal.Value;equipmentCost:Prisma.Decimal.Value;otherCost:Prisma.Decimal.Value;laborHours:Prisma.Decimal.Value|null;plannedUnitPrice:Prisma.Decimal.Value;allocations:Allocation[]};
-export function experienceMetrics(r:Sample){const materials=r.allocations.reduce((s,a)=>s.add(D(a.quantity).mul(a.unitCost)),D(0)),cost=materials.add(r.laborCost).add(r.equipmentCost).add(r.otherCost),planned=D(r.quantity).mul(r.plannedUnitPrice);return {materialCost:materials.toFixed(2),recordedCost:cost.toFixed(2),unitCost:cost.div(r.quantity).toFixed(4),plannedCost:planned.toFixed(2),variance:r.coverage==='DIRECT_COMPLETE'?cost.sub(planned).toFixed(2):null,productivity:r.laborHours?D(r.quantity).div(r.laborHours).toFixed(4):null};}
-export function experienceGroups(records:Sample[]){const groups=new Map<string,Sample[]>();for(const r of records){if(r.status!=='VALIDATED'||r.isTest)continue;const key=r.familyId+':'+r.coverage;groups.set(key,[...(groups.get(key)||[]),r]);}return [...groups].map(([key,rs])=>{const quantity=rs.reduce((s,r)=>s.add(r.quantity),D(0)),cost=rs.reduce((s,r)=>s.add(r.allocations.reduce((n,a)=>n.add(D(a.quantity).mul(a.unitCost)),D(0))).add(r.laborCost).add(r.equipmentCost).add(r.otherCost),D(0));const materials=new Map<string,{name:string;unit:string;quantity:Prisma.Decimal;recordIds:Set<string>}>();for(const r of rs)for(const a of r.allocations){const old=materials.get(a.movement.materialId)||{name:a.movement.material.name,unit:a.movement.material.unit,quantity:D(0),recordIds:new Set<string>()};old.quantity=old.quantity.add(a.quantity);old.recordIds.add(r.id);materials.set(a.movement.materialId,old);}const withHours=rs.filter(r=>r.laborHours!==null),hours=withHours.reduce((s,r)=>s.add(r.laborHours!),D(0)),executedWithHours=withHours.reduce((s,r)=>s.add(r.quantity),D(0));const unitCosts=rs.map(r=>D(experienceMetrics(r).unitCost));return {key,familyId:rs[0].familyId,coverage:rs[0].coverage,sampleCount:rs.length,projectCount:new Set(rs.map(r=>r.projectId)).size,sourceIds:rs.map(r=>r.id),quantity:quantity.toFixed(4),cost:cost.toFixed(2),unitCost:cost.div(quantity).toFixed(4),minUnitCost:Prisma.Decimal.min(...unitCosts).toFixed(4),maxUnitCost:Prisma.Decimal.max(...unitCosts).toFixed(4),hoursSampleCount:withHours.length,laborHours:hours.toFixed(4),productivity:hours.gt(0)?executedWithHours.div(hours).toFixed(4):null,materials:[...materials].map(([materialId,m])=>({materialId,name:m.name,unit:m.unit,quantity:m.quantity.toFixed(4),consumptionPerUnit:m.quantity.div(quantity).toFixed(4),sampleCount:m.recordIds.size}))};});}
+import { z } from 'zod';
+import { Prisma } from '@prisma/client';
+import { D } from './domain';
+import { dateValue } from './plans';
+const text = z.string().trim().min(1).max(200);
+const quantity = z
+  .number()
+  .finite()
+  .positive()
+  .max(100000000)
+  .refine((n) => Math.abs(n * 10000 - Math.round(n * 10000)) < 0.001, 'Máximo 4 decimales');
+const money = z
+  .number()
+  .finite()
+  .min(0)
+  .max(100000000)
+  .refine((n) => Math.abs(n * 100 - Math.round(n * 100)) < 0.001, 'Máximo 2 decimales');
+export const normalizeExperience = (v: string) =>
+  v.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+export const familySchema = z.object({
+  code: text.max(24).transform((v) => v.toUpperCase()),
+  name: text,
+  unit: text.max(16),
+  version: text.max(40),
+  method: z.string().trim().min(1).max(2000),
+  conditions: z.string().trim().min(1).max(2000),
+});
+export const experienceSchema = z
+  .object({
+    projectId: text,
+    budgetItemId: text,
+    familyId: text,
+    reference: text,
+    front: text,
+    startDate: dateValue,
+    endDate: dateValue,
+    quantity,
+    isTest: z.boolean(),
+    coverage: z.enum(['MATERIAL_ONLY', 'DIRECT_COMPLETE']),
+    laborCost: money,
+    equipmentCost: money,
+    otherCost: money,
+    laborHours: quantity.nullable(),
+    costReference: z.string().trim().max(2000),
+    note: z.string().trim().min(1).max(2000),
+    confirmed: z.literal(true),
+    allocations: z.array(z.object({ movementId: text, quantity })).max(100),
+  })
+  .superRefine((v, c) => {
+    if (v.endDate < v.startDate)
+      c.addIssue({ code: 'custom', message: 'El periodo final debe ser posterior al inicial' });
+    if (new Set(v.allocations.map((a) => a.movementId)).size !== v.allocations.length)
+      c.addIssue({
+        code: 'custom',
+        message: 'No repitas una salida; asigna una sola cantidad por salida',
+      });
+    if (
+      v.coverage === 'MATERIAL_ONLY' &&
+      (v.laborCost || v.equipmentCost || v.otherCost || v.laborHours)
+    )
+      c.addIssue({
+        code: 'custom',
+        message: 'El registro solo de materiales no admite costos u horas de mano de obra/equipo',
+      });
+    if ((v.laborCost || v.equipmentCost || v.otherCost || v.laborHours) && !v.costReference)
+      c.addIssue({ code: 'custom', message: 'Indica la fuente de costos y horas' });
+    if (v.coverage === 'MATERIAL_ONLY' && !v.allocations.length)
+      c.addIssue({ code: 'custom', message: 'Asigna al menos una salida de material' });
+  });
+export const experienceInclude = {
+  project: true,
+  family: true,
+  allocations: { include: { movement: { include: { material: true } } } },
+  events: { orderBy: { createdAt: 'asc' as const } },
+};
+type Allocation = {
+  quantity: Prisma.Decimal.Value;
+  unitCost: Prisma.Decimal.Value;
+  movement: { materialId: string; material: { name: string; unit: string } };
+};
+type Sample = {
+  id: string;
+  projectId: string;
+  familyId: string;
+  status: string;
+  isTest: boolean;
+  coverage: string;
+  quantity: Prisma.Decimal.Value;
+  laborCost: Prisma.Decimal.Value;
+  equipmentCost: Prisma.Decimal.Value;
+  otherCost: Prisma.Decimal.Value;
+  laborHours: Prisma.Decimal.Value | null;
+  plannedUnitPrice: Prisma.Decimal.Value;
+  allocations: Allocation[];
+};
+export function experienceMetrics(r: Sample) {
+  const materials = r.allocations.reduce((s, a) => s.add(D(a.quantity).mul(a.unitCost)), D(0)),
+    cost = materials.add(r.laborCost).add(r.equipmentCost).add(r.otherCost),
+    planned = D(r.quantity).mul(r.plannedUnitPrice);
+  return {
+    materialCost: materials.toFixed(2),
+    recordedCost: cost.toFixed(2),
+    unitCost: cost.div(r.quantity).toFixed(4),
+    plannedCost: planned.toFixed(2),
+    variance: r.coverage === 'DIRECT_COMPLETE' ? cost.sub(planned).toFixed(2) : null,
+    productivity: r.laborHours ? D(r.quantity).div(r.laborHours).toFixed(4) : null,
+  };
+}
+export function experienceGroups(records: Sample[]) {
+  const groups = new Map<string, Sample[]>();
+  for (const r of records) {
+    if (r.status !== 'VALIDATED' || r.isTest) continue;
+    const key = r.familyId + ':' + r.coverage;
+    groups.set(key, [...(groups.get(key) || []), r]);
+  }
+  return [...groups].map(([key, rs]) => {
+    const quantity = rs.reduce((s, r) => s.add(r.quantity), D(0)),
+      cost = rs.reduce(
+        (s, r) =>
+          s
+            .add(r.allocations.reduce((n, a) => n.add(D(a.quantity).mul(a.unitCost)), D(0)))
+            .add(r.laborCost)
+            .add(r.equipmentCost)
+            .add(r.otherCost),
+        D(0),
+      );
+    const materials = new Map<
+      string,
+      { name: string; unit: string; quantity: Prisma.Decimal; recordIds: Set<string> }
+    >();
+    for (const r of rs)
+      for (const a of r.allocations) {
+        const old = materials.get(a.movement.materialId) || {
+          name: a.movement.material.name,
+          unit: a.movement.material.unit,
+          quantity: D(0),
+          recordIds: new Set<string>(),
+        };
+        old.quantity = old.quantity.add(a.quantity);
+        old.recordIds.add(r.id);
+        materials.set(a.movement.materialId, old);
+      }
+    const withHours = rs.filter((r) => r.laborHours !== null),
+      hours = withHours.reduce((s, r) => s.add(r.laborHours!), D(0)),
+      executedWithHours = withHours.reduce((s, r) => s.add(r.quantity), D(0));
+    const unitCosts = rs.map((r) => D(experienceMetrics(r).unitCost));
+    return {
+      key,
+      familyId: rs[0].familyId,
+      coverage: rs[0].coverage,
+      sampleCount: rs.length,
+      projectCount: new Set(rs.map((r) => r.projectId)).size,
+      sourceIds: rs.map((r) => r.id),
+      quantity: quantity.toFixed(4),
+      cost: cost.toFixed(2),
+      unitCost: cost.div(quantity).toFixed(4),
+      minUnitCost: Prisma.Decimal.min(...unitCosts).toFixed(4),
+      maxUnitCost: Prisma.Decimal.max(...unitCosts).toFixed(4),
+      hoursSampleCount: withHours.length,
+      laborHours: hours.toFixed(4),
+      productivity: hours.gt(0) ? executedWithHours.div(hours).toFixed(4) : null,
+      materials: [...materials].map(([materialId, m]) => ({
+        materialId,
+        name: m.name,
+        unit: m.unit,
+        quantity: m.quantity.toFixed(4),
+        consumptionPerUnit: m.quantity.div(quantity).toFixed(4),
+        sampleCount: m.recordIds.size,
+      })),
+    };
+  });
+}

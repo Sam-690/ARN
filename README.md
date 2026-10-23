@@ -101,7 +101,6 @@ Presupuestos y Resumen muestran por separado la base y los ajustes aprobados. Re
 
 El piloto conserva aprobaciones declaradas por el administrador. Roles separados, firma y autorización del cliente en su portal quedan pendientes.
 
-
 ### Captura documental
 
 En **Documentos**, carga PDF o foto, selecciona el original, coteja campos y relaciona cada partida con un material y su unidad. Confirma la revisión antes de aplicar: cotización → compra en borrador; remisión → recepción contra compra aprobada; factura → soporte vinculado, sin pago. Puedes corregir documentos revisados mientras no estén aplicados. El original y el historial se conservan. La captura manual funciona sin servicios externos.
@@ -109,7 +108,6 @@ En **Documentos**, carga PDF o foto, selecciona el original, coteja campos y rel
 La lectura automática opcional requiere `OPENAI_API_KEY` y `DOCUMENT_EXTRACTION_MODEL` en `.env`, con un modelo habilitado en tu cuenta que admita visión, PDF y Structured Outputs; reinicia la API tras configurar. La pantalla pide consentimiento para enviar cada archivo a OpenAI, que puede generar cargos. No se ha probado contra el servicio real. Documentación del proveedor: [archivos](https://developers.openai.com/api/docs/guides/file-inputs), [salida estructurada](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses).
 
 Importes en MXN y precios unitarios netos; los impuestos quedan en el documento y no se agregan a las órdenes del piloto. La vinculación de factura no es validación fiscal. El portal del cliente está pospuesto.
-
 
 ### Biblioteca de experiencia
 
@@ -148,3 +146,19 @@ Todos los perfiles internos pueden consultar costos de sus obras autorizadas. El
 **Editar acceso** permite cambiar obras/perfil o desactivar una cuenta sin borrar historial. **Renovar contraseña** exige un nuevo cambio al ingresar. Guardar acceso o contraseña cierra las sesiones anteriores. El icono de candado de la barra superior permite cambiar la contraseña propia. No puedes quitarte tu propio acceso administrativo.
 
 La migración `20261016020000_team_access` conserva el acceso administrativo de las cuentas existentes del piloto. Para otra instalación ejecuta `npm run db:migrate` y `npm run db:generate`. No incluye portal del cliente, correo de recuperación ni configuración de producción.
+
+### Expediente imprimible de bitácoras
+
+En **Bitácoras → Exportar expediente PDF**, selecciona obra y periodo, indica opcionalmente el nombre de la empresa y descarga un expediente A4. Contiene portada, índice con páginas, actividades e incidencias completas, adendas, fotografías con descripción y constancia de entrega para firmas manuscritas. Desde **Leer bitácora** también puedes descargar un registro individual.
+
+Por defecto se incluyen solo registros cerrados; los borradores son opcionales y quedan identificados. Las fotos se orientan automáticamente y se ajustan sin recortar. Los audios se enumeran como anexos digitales; solo el texto publicado en una adenda forma parte del expediente, nunca la transcripción pendiente de revisión. No se incluyen importes del presupuesto ni información financiera.
+
+Límites por expediente: 30 bitácoras, 100 MB de fotos originales y 400 páginas. Divide el periodo para expedientes mayores. Una foto dañada produce un error identificable; puedes corregirla o excluir expresamente las imágenes. Las descargas requieren sesión y acceso a la obra, incluidos usuarios de consulta. La exportación no modifica registros ni constituye una aprobación del cliente.
+
+El despliegue de la API debe conservar `apps/api/assets/fonts/` junto a `dist/` (tipografía DejaVu y su licencia). La generación es local, sin enviar texto o fotografías a servicios externos. Muestra ficticia del formato: `output/pdf/Expediente_bitacoras_muestra.pdf`.
+
+### Formato del código
+
+Usa `npm run format` para aplicar Prettier al código, pruebas, estilos, configuración y documentación, y el formateador de Prisma al esquema. `npm run format:check` comprueba los archivos compatibles con Prettier sin modificarlos. El estilo utiliza dos espacios, comillas simples y líneas de aproximadamente 100 columnas. `.editorconfig` mantiene la indentación y los finales de línea al editar.
+
+Se excluyen dependencias, archivos generados, entregables y migraciones ya aplicadas. El generador auxiliar de mockups en Python usa cuatro espacios y Black (`black --line-length 100 design/mockups/build.py`); los scripts Bash conservan su sintaxis y bloques con indentación legible.

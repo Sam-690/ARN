@@ -1,48 +1,192 @@
 from pathlib import Path
-P=Path(__file__).parent
-icons={
-'grid':'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
-'building':'<path d="M4 21V7l8-4v18M12 9h8v12M2 21h20M7 9h2m-2 4h2m-2 4h2m6-4h2m-2 4h2"/>',
-'calc':'<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h1m6 0h1m-8 4h1m6 0h1m-8 4h1m6 0h1"/>',
-'cart':'<path d="M2 3h3l3 12h11l3-9H6M9 19h.01M18 19h.01"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>',
-'box':'<path d="m3 7 9-5 9 5v10l-9 5-9-5V7Zm0 0 9 5 9-5M12 12v10M7 4.8l9 5"/>',
-'wallet':'<path d="M20 8V4H5a3 3 0 0 0 0 6h16v11H5a3 3 0 0 1-3-3V7M21 13h-5v5h5M18 15.5h.01"/>',
-'book':'<path d="M5 3h15v18H5V3Zm-3 4h5m-5 5h5m-5 5h5m4-10h6m-6 5h6"/>',
-'layers':'<path d="m12 2 10 6-10 6L2 8l10-6Zm-10 11 10 6 10-6M2 18l10 6 10-6"/>',
-'arrow':'<path d="M4 12h15m-5-5 5 5-5 5"/>',
-'plus':'<path d="M12 4v16M4 12h16"/>',
-'down':'<path d="m6 9 6 6 6-6"/>',
-'export':'<path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/>',
-'location':'<path d="M19 10c0 6-7 12-7 12S5 16 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
-'user':'<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>',
-'check':'<path d="m5 12 4 4L20 5"/>',
-'search':'<circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/>',
-'close':'<path d="m6 6 12 12M6 18 18 6"/>'}
-def icon(n):return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{icons[n]}</svg>'
-nav=[('grid','Resumen'),('building','Obras'),('calc','Presupuestos'),('cart','Compras'),('box','Almacén'),('wallet','Pagos'),('book','Bitácoras'),('layers','Insumos')]
-projects=[('OB-001','Residencial Los Olivos','Querétaro, Qro.','Andrea Mendoza','$4,185,000.00','AM'),('OB-002','Nave Industrial Norte','El Marqués, Qro.','Ricardo Salas','$7,268,000.00','RS'),('OB-003','Remodelación Casa Roble','Corregidora, Qro.','Lucía Torres','$176,200.00','LT')]
-def navigation():return ''.join(f'<button class="nav-item {"active" if i==0 else ""}" data-view="{"orders" if i==3 else "dashboard" if i==0 else "inactive"}">{icon(k)}<span>{s}</span>{"<b>1</b>" if i==3 else ""}</button>' for i,(k,s) in enumerate(nav))
-def stats():return ''.join(f'<article class="stat s{i}"><div class="stat-label">{label}{icon(ico)}</div><strong>{value}</strong><small>{sub}</small></article>' for i,(label,value,sub,ico) in enumerate([('Obras en ejecución','03','3 proyectos activos','building'),('Presupuesto directo','$11,629,200','MXN · Todos los proyectos','calc'),('Compromiso pendiente','$84,600','Material aprobado por recibir','cart'),('Saldo por pagar','$109,700','Sobre material recibido','wallet')]))
+
+P = Path(__file__).parent
+icons = {
+    "grid": '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+    "building": '<path d="M4 21V7l8-4v18M12 9h8v12M2 21h20M7 9h2m-2 4h2m-2 4h2m6-4h2m-2 4h2"/>',
+    "calc": '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h1m6 0h1m-8 4h1m6 0h1m-8 4h1m6 0h1"/>',
+    "cart": '<path d="M2 3h3l3 12h11l3-9H6M9 19h.01M18 19h.01"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>',
+    "box": '<path d="m3 7 9-5 9 5v10l-9 5-9-5V7Zm0 0 9 5 9-5M12 12v10M7 4.8l9 5"/>',
+    "wallet": '<path d="M20 8V4H5a3 3 0 0 0 0 6h16v11H5a3 3 0 0 1-3-3V7M21 13h-5v5h5M18 15.5h.01"/>',
+    "book": '<path d="M5 3h15v18H5V3Zm-3 4h5m-5 5h5m-5 5h5m4-10h6m-6 5h6"/>',
+    "layers": '<path d="m12 2 10 6-10 6L2 8l10-6Zm-10 11 10 6 10-6M2 18l10 6 10-6"/>',
+    "arrow": '<path d="M4 12h15m-5-5 5 5-5 5"/>',
+    "plus": '<path d="M12 4v16M4 12h16"/>',
+    "down": '<path d="m6 9 6 6 6-6"/>',
+    "export": '<path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/>',
+    "location": '<path d="M19 10c0 6-7 12-7 12S5 16 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
+    "user": '<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>',
+    "check": '<path d="m5 12 4 4L20 5"/>',
+    "search": '<circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/>',
+    "close": '<path d="m6 6 12 12M6 18 18 6"/>',
+}
+
+
+def icon(n):
+    return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{icons[n]}</svg>'
+
+
+nav = [
+    ("grid", "Resumen"),
+    ("building", "Obras"),
+    ("calc", "Presupuestos"),
+    ("cart", "Compras"),
+    ("box", "Almacén"),
+    ("wallet", "Pagos"),
+    ("book", "Bitácoras"),
+    ("layers", "Insumos"),
+]
+projects = [
+    (
+        "OB-001",
+        "Residencial Los Olivos",
+        "Querétaro, Qro.",
+        "Andrea Mendoza",
+        "$4,185,000.00",
+        "AM",
+    ),
+    ("OB-002", "Nave Industrial Norte", "El Marqués, Qro.", "Ricardo Salas", "$7,268,000.00", "RS"),
+    ("OB-003", "Remodelación Casa Roble", "Corregidora, Qro.", "Lucía Torres", "$176,200.00", "LT"),
+]
+
+
+def navigation():
+    return "".join(
+        f'<button class="nav-item {"active" if i==0 else ""}" data-view="{"orders" if i==3 else "dashboard" if i==0 else "inactive"}">{icon(k)}<span>{s}</span>{"<b>1</b>" if i==3 else ""}</button>'
+        for i, (k, s) in enumerate(nav)
+    )
+
+
+def stats():
+    return "".join(
+        f'<article class="stat s{i}"><div class="stat-label">{label}{icon(ico)}</div><strong>{value}</strong><small>{sub}</small></article>'
+        for i, (label, value, sub, ico) in enumerate(
+            [
+                ("Obras en ejecución", "03", "3 proyectos activos", "building"),
+                ("Presupuesto directo", "$11,629,200", "MXN · Todos los proyectos", "calc"),
+                ("Compromiso pendiente", "$84,600", "Material aprobado por recibir", "cart"),
+                ("Saldo por pagar", "$109,700", "Sobre material recibido", "wallet"),
+            ]
+        )
+    )
+
+
 def table():
- rows=''.join(f'<tr><td><span class="project-number">0{i+1}</span></td><td><small>{code}</small><strong>{name}</strong><em>{icon("location")}{loc}</em></td><td><span class="person"><i>{initials}</i>{manager}</span></td><td class="num">{value}<small>Presupuesto directo</small></td><td><span class="badge">En ejecución</span></td><td>{icon("arrow")}</td></tr>' for i,(code,name,loc,manager,value,initials) in enumerate(projects))
- return f'<div class="table-wrap"><table class="project-table"><thead><tr><th></th><th>Proyecto</th><th>Responsable</th><th class="num">Presupuesto</th><th>Estado</th><th></th></tr></thead><tbody>{rows}</tbody></table></div>'
-def cards():return '<div class="project-cards">'+''.join(f'<article class="project-card"><div class="card-top"><span>{code}</span>{icon("building")}</div><h3>{name}</h3><p>{loc}</p><strong>{value}</strong><small>Presupuesto directo</small><div class="card-footer"><span class="badge">En ejecución</span>{icon("arrow")}</div></article>' for code,name,loc,manager,value,initials in projects)+'</div>'
-def attention():return '<div class="attention">'+''.join(f'<div class="attention-row"><span class="attention-icon">{icon(ico)}</span><div><strong>{name}</strong><small>{desc}</small></div><b>{count}</b>{icon("arrow")}</div>' for ico,name,desc,count in [('cart','Compras por aprobar','Órdenes en borrador','01'),('wallet','Pagos pendientes','$109,700 por cubrir','02'),('book','Bitácoras por cerrar','Registros de campo','02')])+'</div>'
-def logs():return '<div class="logs">'+''.join(f'<div class="log"><div class="date"><b>{d}</b><span>OCT</span></div><div><strong>{title}</strong><small>{p}</small></div><span class="log-status">{state}</span>{icon("arrow")}</div>' for d,title,p,state in [('10','Colado de losa · edificio A','Residencial Los Olivos','Cerrada'),('10','Montaje de estructura · eje 3','Nave Industrial Norte','Borrador'),('09','Inicio de trabajos preliminares','Remodelación Casa Roble','Borrador')])+'</div>'
-def resource():return '<div class="resource">'+''.join(f'<div class="resource-row"><div><span>{label}</span><b>{value}</b></div><div class="bar"><i style="width:{width}%"></i></div></div>' for label,value,width in [('Recibido en materiales','$241,900',100),('Pagado a proveedores','$132,200',54.65),('Inventario disponible','$136,000',56.22)])+'<p>Etapas distintas de la operación. Estos importes no se suman.</p></div>'
-def head(title,subtitle='',link=''):return f'<div class="panel-head"><div><h2>{title}</h2>{"<p>"+subtitle+"</p>" if subtitle else ""}</div>{"<span class=link>"+link+icon("arrow")+"</span>" if link else ""}</div>'
+    rows = "".join(
+        f'<tr><td><span class="project-number">0{i+1}</span></td><td><small>{code}</small><strong>{name}</strong><em>{icon("location")}{loc}</em></td><td><span class="person"><i>{initials}</i>{manager}</span></td><td class="num">{value}<small>Presupuesto directo</small></td><td><span class="badge">En ejecución</span></td><td>{icon("arrow")}</td></tr>'
+        for i, (code, name, loc, manager, value, initials) in enumerate(projects)
+    )
+    return f'<div class="table-wrap"><table class="project-table"><thead><tr><th></th><th>Proyecto</th><th>Responsable</th><th class="num">Presupuesto</th><th>Estado</th><th></th></tr></thead><tbody>{rows}</tbody></table></div>'
+
+
+def cards():
+    return (
+        '<div class="project-cards">'
+        + "".join(
+            f'<article class="project-card"><div class="card-top"><span>{code}</span>{icon("building")}</div><h3>{name}</h3><p>{loc}</p><strong>{value}</strong><small>Presupuesto directo</small><div class="card-footer"><span class="badge">En ejecución</span>{icon("arrow")}</div></article>'
+            for code, name, loc, manager, value, initials in projects
+        )
+        + "</div>"
+    )
+
+
+def attention():
+    return (
+        '<div class="attention">'
+        + "".join(
+            f'<div class="attention-row"><span class="attention-icon">{icon(ico)}</span><div><strong>{name}</strong><small>{desc}</small></div><b>{count}</b>{icon("arrow")}</div>'
+            for ico, name, desc, count in [
+                ("cart", "Compras por aprobar", "Órdenes en borrador", "01"),
+                ("wallet", "Pagos pendientes", "$109,700 por cubrir", "02"),
+                ("book", "Bitácoras por cerrar", "Registros de campo", "02"),
+            ]
+        )
+        + "</div>"
+    )
+
+
+def logs():
+    return (
+        '<div class="logs">'
+        + "".join(
+            f'<div class="log"><div class="date"><b>{d}</b><span>OCT</span></div><div><strong>{title}</strong><small>{p}</small></div><span class="log-status">{state}</span>{icon("arrow")}</div>'
+            for d, title, p, state in [
+                ("10", "Colado de losa · edificio A", "Residencial Los Olivos", "Cerrada"),
+                ("10", "Montaje de estructura · eje 3", "Nave Industrial Norte", "Borrador"),
+                ("09", "Inicio de trabajos preliminares", "Remodelación Casa Roble", "Borrador"),
+            ]
+        )
+        + "</div>"
+    )
+
+
+def resource():
+    return (
+        '<div class="resource">'
+        + "".join(
+            f'<div class="resource-row"><div><span>{label}</span><b>{value}</b></div><div class="bar"><i style="width:{width}%"></i></div></div>'
+            for label, value, width in [
+                ("Recibido en materiales", "$241,900", 100),
+                ("Pagado a proveedores", "$132,200", 54.65),
+                ("Inventario disponible", "$136,000", 56.22),
+            ]
+        )
+        + "<p>Etapas distintas de la operación. Estos importes no se suman.</p></div>"
+    )
+
+
+def head(title, subtitle="", link=""):
+    return f'<div class="panel-head"><div><h2>{title}</h2>{"<p>"+subtitle+"</p>" if subtitle else ""}</div>{"<span class=link>"+link+icon("arrow")+"</span>" if link else ""}</div>'
+
+
 def orders():
- rows=[('0004','Agregados San José','Remodelación Casa Roble','$5,760.00','Borrador'),('0003','Prefabricados del Centro','Residencial Los Olivos','$39,600.00','Aprobada'),('0002','Aceros del Bajío','Nave Industrial Norte','$174,400.00','Recibida'),('0001','Materiales La Estación','Residencial Los Olivos','$112,500.00','Recepción parcial')]
- return f'<div class="orders-heading"><div><div class="eyebrow">ABASTECIMIENTO / 04 ÓRDENES</div><h1>Compras</h1><p>De la orden al material recibido, sin perder el hilo.</p></div><div class="actions"><span class="btn">{icon("export")}Exportar</span><span class="btn primary">{icon("plus")}Nueva compra</span></div></div><div class="filters"><span>{icon("search")}Buscar proveedor, orden u obra…</span><span>Todos los estados {icon("down")}</span></div><div class="panel"><table class="order-table"><thead><tr><th>Orden / proveedor</th><th>Obra</th><th>Entrega esperada</th><th class="num">Importe</th><th>Estado</th><th></th></tr></thead><tbody>'+''.join(f'<tr><td><small>OC-{n}</small><strong>{s}</strong></td><td>{p}</td><td>16 oct 2026</td><td class="num">{v}</td><td><span class="badge {"warn" if state in ["Borrador","Recepción parcial"] else ""}">{state}</span></td><td><span class="link">Abrir {icon("arrow")}</span></td></tr>' for n,s,p,v,state in rows)+'</tbody></table></div><p class="orders-note">Mismo flujo actual: borrador → aprobación → recepción → pago.</p>'
-for key,name,num in [('plano','Plano','01'),('estudio','Estudio','02'),('noche','Noche','03')]:
- brand=f'<div class="brand"><span>{icon("building")}</span>obra<span class="brand-dot">.</span></div>'
- sidebar=f'<aside>{brand}<div class="company"><i>ME</i><div><b>Mi empresa</b><small>Administración de obras</small></div>{icon("down")}</div><div class="nav-title">ESPACIO DE TRABAJO</div><nav>{navigation()}</nav><div class="aside-bottom"><span class="connection"><i></i>Todos tus proyectos</span><div class="profile"><i>AD</i><div><b>Administrador</b><small>Mi empresa</small></div></div></div></aside>'
- mode_controls='<div class=theme-switch role=group aria-label="Apariencia"><button type=button data-mode-choice=light aria-pressed=false>Claro</button><button type=button data-mode-choice=dark aria-pressed=true>Oscuro</button></div>' if key=='noche' else ''
- top=f'<header>{brand if key=="estudio" else "<div class=crumb>Mi empresa <span>/</span> <b class=crumb-view>Resumen</b></div>"}<div class="header-right"><span>{icon("building")}Todas las obras{icon("down")}</span><span class="header-date">12 octubre 2026</span>{mode_controls}<i class="avatar">AD</i></div></header>'
- intro=f'<div class="intro"><div><div class="eyebrow">{"DIRECCIÓN DE PROYECTOS" if key=="estudio" else "CENTRO DE OPERACIONES" if key=="noche" else "PANORAMA GENERAL"} <span> / OCTUBRE 2026</span></div><h1>{"Cada proyecto,<br>una visión completa." if key=="estudio" else "El control empieza aquí." if key=="noche" else "El estado de tus obras."}</h1><p>Tus proyectos, recursos y pendientes en un solo lugar.</p></div><div class="actions"><span class="btn">{icon("export")}Exportar</span><span class="btn primary">{icon("plus")}Nueva obra</span></div></div>'
- if key=='estudio':
-  dashboard=intro+f'<section class="stats">{stats()}</section><div class="section-heading"><h2>Proyectos en marcha <small>03</small></h2><span class="link">Ver todas las obras {icon("arrow")}</span></div>'+cards()+f'<div class="lower-grid"><section class="panel">{head("El pulso de la obra","Últimas bitácoras", "Ver bitácoras")}{logs()}</section><section class="panel">{head("Agenda operativa","Pendientes por atender")}{attention()}</section></div>'
- else:
-  dashboard=intro+f'<section class="stats">{stats()}</section><div class="main-grid"><section class="panel projects">{head("Obras en ejecución", "Presupuesto y responsables de tus proyectos", "Ver todas")}{table()}</section><section class="panel pending">{head("Por atender", "Decisiones que mueven la obra")}{attention()}</section></div><div class="lower-grid"><section class="panel">{head("Últimas bitácoras", "La actividad reciente de campo", "Ver bitácoras")}{logs()}</section><section class="panel">{head("Recursos de la operación", "Importes independientes · MXN")}{resource()}</section></div>'
- html=f'''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Propuesta {num} · {name} — Obra</title><script src="theme-init.js"></script><link rel="stylesheet" href="style.css"></head><body class="{key}"><div class="mockup-label">PROPUESTA {num} / {name.upper()} <span>Mockup visual · Datos ficticios · Misma funcionalidad</span></div><div class="app">{sidebar if key!='estudio' else ''}<div class="shell">{top}{'<nav class="top-nav">'+navigation()+'</nav>' if key=='estudio' else ''}<main><section id="dashboard">{dashboard}</section><section id="orders" hidden>{orders()}</section><footer><span>OBRA / Mi empresa</span><span>Una empresa. Todos tus proyectos.</span></footer></main></div></div><div id="notice" role="status" hidden>Vista conceptual. Elige Resumen o Compras para comparar el diseño.</div><script src="view.js"></script></body></html>'''
- (P/f'{key}.html').write_text(html)
+    rows = [
+        ("0004", "Agregados San José", "Remodelación Casa Roble", "$5,760.00", "Borrador"),
+        ("0003", "Prefabricados del Centro", "Residencial Los Olivos", "$39,600.00", "Aprobada"),
+        ("0002", "Aceros del Bajío", "Nave Industrial Norte", "$174,400.00", "Recibida"),
+        (
+            "0001",
+            "Materiales La Estación",
+            "Residencial Los Olivos",
+            "$112,500.00",
+            "Recepción parcial",
+        ),
+    ]
+    return (
+        f'<div class="orders-heading"><div><div class="eyebrow">ABASTECIMIENTO / 04 ÓRDENES</div><h1>Compras</h1><p>De la orden al material recibido, sin perder el hilo.</p></div><div class="actions"><span class="btn">{icon("export")}Exportar</span><span class="btn primary">{icon("plus")}Nueva compra</span></div></div><div class="filters"><span>{icon("search")}Buscar proveedor, orden u obra…</span><span>Todos los estados {icon("down")}</span></div><div class="panel"><table class="order-table"><thead><tr><th>Orden / proveedor</th><th>Obra</th><th>Entrega esperada</th><th class="num">Importe</th><th>Estado</th><th></th></tr></thead><tbody>'
+        + "".join(
+            f'<tr><td><small>OC-{n}</small><strong>{s}</strong></td><td>{p}</td><td>16 oct 2026</td><td class="num">{v}</td><td><span class="badge {"warn" if state in ["Borrador","Recepción parcial"] else ""}">{state}</span></td><td><span class="link">Abrir {icon("arrow")}</span></td></tr>'
+            for n, s, p, v, state in rows
+        )
+        + '</tbody></table></div><p class="orders-note">Mismo flujo actual: borrador → aprobación → recepción → pago.</p>'
+    )
+
+
+for key, name, num in [
+    ("plano", "Plano", "01"),
+    ("estudio", "Estudio", "02"),
+    ("noche", "Noche", "03"),
+]:
+    brand = f'<div class="brand"><span>{icon("building")}</span>obra<span class="brand-dot">.</span></div>'
+    sidebar = f'<aside>{brand}<div class="company"><i>ME</i><div><b>Mi empresa</b><small>Administración de obras</small></div>{icon("down")}</div><div class="nav-title">ESPACIO DE TRABAJO</div><nav>{navigation()}</nav><div class="aside-bottom"><span class="connection"><i></i>Todos tus proyectos</span><div class="profile"><i>AD</i><div><b>Administrador</b><small>Mi empresa</small></div></div></div></aside>'
+    mode_controls = (
+        '<div class=theme-switch role=group aria-label="Apariencia"><button type=button data-mode-choice=light aria-pressed=false>Claro</button><button type=button data-mode-choice=dark aria-pressed=true>Oscuro</button></div>'
+        if key == "noche"
+        else ""
+    )
+    top = f'<header>{brand if key=="estudio" else "<div class=crumb>Mi empresa <span>/</span> <b class=crumb-view>Resumen</b></div>"}<div class="header-right"><span>{icon("building")}Todas las obras{icon("down")}</span><span class="header-date">12 octubre 2026</span>{mode_controls}<i class="avatar">AD</i></div></header>'
+    intro = f'<div class="intro"><div><div class="eyebrow">{"DIRECCIÓN DE PROYECTOS" if key=="estudio" else "CENTRO DE OPERACIONES" if key=="noche" else "PANORAMA GENERAL"} <span> / OCTUBRE 2026</span></div><h1>{"Cada proyecto,<br>una visión completa." if key=="estudio" else "El control empieza aquí." if key=="noche" else "El estado de tus obras."}</h1><p>Tus proyectos, recursos y pendientes en un solo lugar.</p></div><div class="actions"><span class="btn">{icon("export")}Exportar</span><span class="btn primary">{icon("plus")}Nueva obra</span></div></div>'
+    if key == "estudio":
+        dashboard = (
+            intro
+            + f'<section class="stats">{stats()}</section><div class="section-heading"><h2>Proyectos en marcha <small>03</small></h2><span class="link">Ver todas las obras {icon("arrow")}</span></div>'
+            + cards()
+            + f'<div class="lower-grid"><section class="panel">{head("El pulso de la obra","Últimas bitácoras", "Ver bitácoras")}{logs()}</section><section class="panel">{head("Agenda operativa","Pendientes por atender")}{attention()}</section></div>'
+        )
+    else:
+        dashboard = (
+            intro
+            + f'<section class="stats">{stats()}</section><div class="main-grid"><section class="panel projects">{head("Obras en ejecución", "Presupuesto y responsables de tus proyectos", "Ver todas")}{table()}</section><section class="panel pending">{head("Por atender", "Decisiones que mueven la obra")}{attention()}</section></div><div class="lower-grid"><section class="panel">{head("Últimas bitácoras", "La actividad reciente de campo", "Ver bitácoras")}{logs()}</section><section class="panel">{head("Recursos de la operación", "Importes independientes · MXN")}{resource()}</section></div>'
+        )
+    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Propuesta {num} · {name} — Obra</title><script src="theme-init.js"></script><link rel="stylesheet" href="style.css"></head><body class="{key}"><div class="mockup-label">PROPUESTA {num} / {name.upper()} <span>Mockup visual · Datos ficticios · Misma funcionalidad</span></div><div class="app">{sidebar if key!='estudio' else ''}<div class="shell">{top}{'<nav class="top-nav">'+navigation()+'</nav>' if key=='estudio' else ''}<main><section id="dashboard">{dashboard}</section><section id="orders" hidden>{orders()}</section><footer><span>OBRA / Mi empresa</span><span>Una empresa. Todos tus proyectos.</span></footer></main></div></div><div id="notice" role="status" hidden>Vista conceptual. Elige Resumen o Compras para comparar el diseño.</div><script src="view.js"></script></body></html>"""
+    (P / f"{key}.html").write_text(html)

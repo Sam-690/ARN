@@ -1,38 +1,747 @@
 'use client';
-import {useState,FormEvent,useRef,useEffect} from 'react';
-import {TrendingUp,Download,Plus,Trash2} from 'lucide-react';
-import type {Data,ForecastResult} from './types';
-const qty=(n:string|number)=>new Intl.NumberFormat('es-MX',{maximumFractionDigits:4}).format(Number(n));
-const money=(n:string|number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(n));
-const day=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Mexico_City'});
-function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="field"><span>{label}</span>{children}</label>;}
-type Option={kind:'BUY'|'TRANSFER';label:string;fromProjectId:string;unitPrice:string;freight:string;arrival:string;confirmed:boolean;reference:string};
-const freshOption=():Option=>({kind:'BUY',label:'',fromProjectId:'',unitPrice:'',freight:'',arrival:'',confirmed:false,reference:''});
-export function ForecastPanel({data,projectId,onSupply}:{data:Data;projectId:string;onSupply:(projectId:string)=>void}){
- const [target,setTarget]=useState(projectId==='all'?data.projects.find(p=>p.status==='ACTIVE')?.id||'':projectId),[material,setMaterial]=useState(data.materials.find(m=>m.type==='MATERIAL')?.id||''),[horizon,setHorizon]=useState('28'),[lead,setLead]=useState('5'),[safety,setSafety]=useState('2');
- const [result,setResult]=useState<ForecastResult|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[options,setOptions]=useState<Option[]>([freshOption()]),[amount,setAmount]=useState(''),[needed,setNeeded]=useState(day()),[comparisonDirty,setComparisonDirty]=useState(false);
- const resultsRef=useRef<HTMLDivElement>(null),request=useRef(0);
- useEffect(()=>()=>{request.current++;},[]);
- const m=data.materials.find(m=>m.id===material),p=data.projects.find(p=>p.id===target);
- function invalidate(){request.current++;setBusy(false);setResult(null);setError('');setOptions([freshOption()]);setComparisonDirty(false);}
- function editOption(index:number,patch:Partial<Option>){setOptions(options.map((o,i)=>i===index?{...o,...patch,confirmed:patch.confirmed??false}:o));setComparisonDirty(true);}
- async function calculate(compare=false){const id=++request.current;setBusy(true);setError('');try{
-  const response=await fetch('/api/supply/forecast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId:target,materialId:material,horizon:Number(horizon),leadDays:Number(lead),safetyDays:Number(safety),...(compare?{comparison:{quantity:Number(amount),neededOn:needed,options:options.map(o=>({...o,unitPrice:Number(o.unitPrice),freight:Number(o.freight)}))}}:{})})});
-  const value=await response.json();if(!response.ok)throw new Error(value.message||'No se pudo calcular el escenario');if(id!==request.current)return;
-  setResult(value);setComparisonDirty(false);if(!compare){setAmount(Number(value.required)>0?value.required:'');setNeeded(value.firstShortage||day());setOptions([freshOption()]);}else resultsRef.current?.scrollIntoView({behavior:'smooth',block:'start'});
- }catch(e){if(id===request.current)setError((e as Error).message);}finally{if(id===request.current)setBusy(false);}}
- function exportScenario(){if(!result)return;const blob=new Blob([JSON.stringify({title:'Escenario de abastecimiento — no es una orden',project:p?.name,material:m?.name,unit:m?.unit,assumptions:'Máximo acumulado entre necesidades y tendencia; días naturales; costos netos MXN; flete no capitalizado; sin reservas.',...result},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`abastecimiento-${p?.code}-${result.asOf}.json`;a.click();URL.revokeObjectURL(url);}
- return <div className="experience-module forecast-module"><section className="panel experience-form"><div className="forecast-heading"><TrendingUp size={25}/><div><h2>Anticipa la siguiente compra</h2><p className="small-note">Escenario de apoyo: revisa las fuentes y confirma la logística antes de actuar. Puedes exportarlo; los escenarios no se guardan al cambiar de obra o salir.</p></div></div><form onSubmit={e=>{e.preventDefault();calculate();}}><fieldset disabled={busy}><div className="form-grid">{projectId==='all'&&<Field label="Obra a analizar"><select required value={target} onChange={e=>{invalidate();setTarget(e.target.value);}}>{data.projects.map(p=><option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</select></Field>}<Field label="Material a analizar"><select required value={material} onChange={e=>{invalidate();setMaterial(e.target.value);}}>{data.materials.filter(m=>m.type==='MATERIAL').map(m=><option key={m.id} value={m.id}>{m.name} · {m.unit}</option>)}</select></Field><Field label="Horizonte (días naturales)"><input type="number" min="1" max="90" required value={horizon} onChange={e=>{invalidate();setHorizon(e.target.value);}}/></Field><Field label="Plazo para abastecer (días)"><input type="number" min="0" max="365" required value={lead} onChange={e=>{invalidate();setLead(e.target.value);}}/></Field><Field label="Reserva preventiva (días de consumo)"><input type="number" min="0" max="30" required value={safety} onChange={e=>{invalidate();setSafety(e.target.value);}}/></Field></div><button className="primary" disabled={!target||!material}>{busy?'Calculando…':'Calcular escenario'}</button></fieldset></form>{p?.status==='CLOSED'&&<p className="experience-notice">Obra cerrada: consulta histórica. No se habilitan operaciones.</p>}{error&&<p className="error" role="alert">{error}</p>}</section>
- {result&&<><section className="panel experience-form"><div className="panel-head"><div><span className="eyebrow">{p?.code} · {m?.name}</span><h2>{!result.history.sufficient&&!result.needs.length?'Sin datos suficientes para proyectar':Number(result.required)>0?'Hay una brecha de abastecimiento':'Cobertura dentro del escenario'}</h2><p className="small-note">Calculado {new Date(result.generatedAt).toLocaleString('es-MX')} · Actualiza el cálculo si cambian las compras o el almacén.</p></div><button className="secondary" onClick={exportScenario} disabled={comparisonDirty}><Download size={16}/>Exportar escenario</button></div><div className="mini-stats"><div><span>Existencia utilizable</span><strong>{qty(result.usable)} {m?.unit}</strong></div><div><span>Aporte adicional mínimo en el horizonte</span><strong>{qty(result.required)} {m?.unit}</strong></div><div><span>Primera brecha / pedir a más tardar</span><strong>{result.firstShortage||'Sin brecha'}</strong><small>{result.orderBy||'Sin fecha requerida'}</small></div></div>
- <p className="experience-notice">{result.history.sufficient?`Ritmo observado: ${qty(result.history.dailyRate!)} ${m?.unit}/día natural. Reserva preventiva: ${qty(result.safety)} ${m?.unit}.`:'Historial insuficiente: se necesitan al menos 7 días observables y salidas en 3 días distintos. Solo se evalúan necesidades planificadas; no se estima una reserva por consumo.'} {result.history.activeDays} días con salidas de {result.history.observedDays} observados.</p>
- {!result.history.sufficient&&!result.needs.length&&<p className="error">Sin necesidades abiertas ni historial suficiente: este resultado no demuestra que la obra esté abastecida.</p>}
- <details className="change-history"><summary>Cómo se calcula y qué queda fuera</summary><p>Se toman hasta 28 días completos anteriores a hoy, desde el inicio de la obra. El ritmo es la suma de salidas dividida entre todos los días naturales observados, incluidos los días sin consumo. Hoy queda fuera para no usar un día incompleto.</p><p>La demanda acumulada usa el mayor valor entre planificación y tendencia, más la reserva preventiva. Se consideran dos estimaciones de la misma demanda: no se suman. Si corresponden a trabajos distintos, incorpora sus necesidades explícitas en Abastecimiento.</p><p>Las entradas aprobadas se cuentan en su fecha esperada, antes del consumo del día. Una compra vencida o un traspaso en tránsito no se considera existencia. El aporte adicional es la mayor brecha diaria; una entrada posterior no elimina una falta anterior.</p><p>Son salidas operativas de esta obra, que pueden contener datos de demostración del piloto. No se extrapolan registros de prueba de la biblioteca ni avances sin un vínculo comprobado con el material. El modelo supone continuidad del ritmo, sin calendario por actividad, estacionalidad ni probabilidades estadísticas.</p></details>
- <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Plan acumulado</th><th>Tendencia acumulada</th><th>Entradas acumuladas</th><th>Saldo previsto*</th></tr></thead><tbody>{result.daily.map(d=><tr key={d.date}><td>{d.date}</td><td>{qty(d.planned)}</td><td>{d.trend===null?'Sin estimación':qty(d.trend)}</td><td>{qty(d.arrivals)}</td><td><span className={Number(d.balance)<0?'forecast-negative':''}>{qty(d.balance)} {m?.unit}</span></td></tr>)}</tbody></table></div><p className="small-note">* Después de la reserva preventiva. Un saldo negativo indica brecha, no inventario real negativo.</p>
- <details className="change-history"><summary>Fuentes del cálculo</summary><h3>Salidas · {result.history.start} a {result.history.end}</h3>{result.history.sources.length?result.history.sources.map(s=><p key={s.id}>{s.date} · {qty(s.quantity)} {m?.unit} · {s.reference} · <small>{s.id}</small></p>):<p>Sin salidas en el periodo.</p>}<h3>Necesidades abiertas</h3>{result.needs.map(n=><p key={n.id}>{n.date} · {qty(n.quantity)} {m?.unit} · {n.purpose}</p>)}<h3>Compras pendientes</h3>{result.pending.map((o,i)=><p key={i}>OC-{o.number} · {qty(o.quantity)} {m?.unit} · {o.date} {o.date<result.asOf?'· Vencida: excluida':o.date>result.daily.at(-1)!.date?'· Fuera del horizonte':'· Fecha esperada, no recepción'}</p>)}</details></section>
- <section className="panel experience-form"><h2>Historial de proveedores</h2><p className="small-note">Órdenes de tus obras autorizadas que incluyen este material. Se mide entrega completa de la orden contra fecha esperada; la fecha de registro de recepción aproxima la entrega física. Los nombres equivalentes se agrupan.</p>{!result.suppliers.length&&<p>No hay compras aprobadas para evaluar este material.</p>}<div className="forecast-cards">{result.suppliers.map(s=><article className="detail-box" key={s.name}><h3>{s.name}</h3><strong>{s.onTimePercent===null?'Sin muestra evaluable':`${s.onTimePercent}% a tiempo`}</strong><p>{s.onTime} de {s.evaluated} órdenes evaluables · demora media en órdenes completadas: {s.averageDelay===null?'Sin datos':`${s.averageDelay} días`}</p>{s.evaluated<3&&<p className="small-note">Muestra pequeña; no garantiza próximas entregas.</p>}<details><summary>Ver órdenes y exclusiones</summary>{s.sources.map(o=><p key={o.number}>OC-{o.number} · {data.projects.find(p=>p.id===o.projectId)?.code} · prometida {o.due} · {{ON_TIME:'Completa a tiempo',LATE:'Completa con retraso',OVERDUE:'Pendiente vencida',PENDING:'Pendiente, aún en plazo',UNKNOWN:'Sin recepción conciliable; excluida'}[o.result]}{o.completed?` · registrada ${o.completed}`:''}</p>)}</details></article>)}</div></section>
- <section className="panel experience-form"><h2>Comparar compra y traslado</h2><p>Evalúa alternativas completas para una cantidad y una fecha. Los sobrantes publicados son candidatos; se verifica su disponibilidad al recalcular.</p><p className="small-note">Costo comparable = material + flete, en MXN netos sin impuestos. En traslado se usa el costo promedio del almacén de origen, no una cotización editable. El flete solo participa en esta simulación.</p>
- <form onSubmit={(e:FormEvent)=>{e.preventDefault();calculate(true);}}><fieldset disabled={busy}><div className="form-grid"><Field label={`Cantidad a comparar (${m?.unit})`}><input required type="number" min="0.0001" max="100000000" step="0.0001" value={amount} onChange={e=>{setAmount(e.target.value);setOptions(options.map(o=>({...o,confirmed:false})));setComparisonDirty(true);}}/></Field><Field label="Fecha necesaria para esta cantidad"><input required type="date" value={needed} onChange={e=>{setNeeded(e.target.value);setOptions(options.map(o=>({...o,confirmed:false})));setComparisonDirty(true);}}/></Field></div><p className="small-note">La cantidad inicial es la máxima brecha del horizonte; la fecha inicial es la primera brecha. Es una comparación conservadora de un solo lote. Puedes ajustar ambos valores según tu programa.</p>
- {options.map((o,i)=><article className="forecast-option" key={i}><div className="forecast-heading"><h3>Alternativa {i+1}</h3><button type="button" className="icon-button" disabled={options.length===1} aria-label={`Eliminar alternativa ${i+1}`} onClick={()=>{setOptions(options.filter((_,j)=>i!==j));setComparisonDirty(true);}}><Trash2 size={16}/></button></div><div className="form-grid"><Field label="Tipo"><select value={o.kind} onChange={e=>editOption(i,{kind:e.target.value as Option['kind'],fromProjectId:'',label:'',unitPrice:''})}><option value="BUY">Compra a proveedor</option><option value="TRANSFER">Traspaso de otra obra</option></select></Field>{o.kind==='BUY'?<><Field label="Proveedor / alternativa"><input required maxLength={200} value={o.label} onChange={e=>editOption(i,{label:e.target.value})}/></Field><Field label={`Precio neto por ${m?.unit}`}><input required type="number" min="0" max="100000000" step="0.0001" value={o.unitPrice} onChange={e=>editOption(i,{unitPrice:e.target.value})}/></Field></>:<Field label="Obra con sobrante liberado"><select required value={o.fromProjectId} onChange={e=>{const a=result.alternatives.find(a=>a.projectId===e.target.value);editOption(i,{fromProjectId:e.target.value,label:a?.name||'',unitPrice:a?.unitCost||''});}}><option value="">{result.alternatives.length?'Selecciona origen':'No hay sobrantes publicados en otras obras'}</option>{result.alternatives.map(a=><option key={a.projectId} value={a.projectId}>{a.name} · {qty(a.available)} {m?.unit} · {money(a.unitCost)}/{m?.unit}</option>)}</select></Field>}<Field label="Flete total neto (MXN)"><input required type="number" min="0" max="100000000" step="0.0001" value={o.freight} onChange={e=>editOption(i,{freight:e.target.value})}/></Field><Field label="Fecha de llegada"><input required type="date" value={o.arrival} onChange={e=>editOption(i,{arrival:e.target.value})}/></Field><Field label="Soporte: cotización / responsable / fecha"><input required maxLength={500} value={o.reference} onChange={e=>editOption(i,{reference:e.target.value})}/></Field></div><label className="document-confirm"><input type="checkbox" checked={o.confirmed} onChange={e=>editOption(i,{confirmed:e.target.checked})}/>Confirmé disponibilidad para toda la cantidad, precio, flete y fecha con el proveedor o responsable.</label></article>)}<div className="log-actions"><button type="button" className="secondary" disabled={options.length>=10} onClick={()=>{setOptions([...options,freshOption()]);setComparisonDirty(true);}}><Plus size={16}/>Añadir alternativa</button><button className="primary">Comparar alternativas</button></div></fieldset></form>
- <div ref={resultsRef} className="plan-anchor">{comparisonDirty&&result.comparison?<p className="experience-notice">Cambiaste el escenario. Vuelve a comparar para actualizar el resultado.</p>:result.comparison&&<><h3>{result.comparison.recommendedIndex===null?'Ninguna alternativa cumple todas las condiciones':'Menor costo entre las alternativas viables'}</h3><div className="forecast-cards">{result.comparison.options.map(o=><article key={o.index} className={'detail-box '+(o.index===result.comparison!.recommendedIndex?'forecast-best':'')}><span className="badge">{o.index===result.comparison!.recommendedIndex?'Recomendada':o.eligible?'Viable':'Revisar'}</span><h3>{o.label}</h3><strong>{money(o.total)}</strong><p>{qty(result.comparison!.quantity)} {m?.unit} × {money(o.unitPrice)} + {money(o.freight)} de flete · llega {o.arrival}</p>{o.reasons.map(reason=><p key={reason} className="forecast-negative">{reason}</p>)}<p className="small-note">Soporte: {o.reference||'No proporcionado'}</p></article>)}</div>{result.comparison.saving!==null&&<p>Diferencia entre la opción viable más costosa y la recomendada: {money(result.comparison.saving)}. No representa un ahorro realizado.</p>}<p className="experience-notice">Esta simulación no reserva sobrantes, despacha, compra ni registra pagos. No combina lotes parciales ni optimiza varias obras a la vez. Antes de ejecutar, revalida las existencias y los acuerdos.</p><button className="secondary" onClick={()=>onSupply(target)}>Ir a Abastecimiento</button></>}</div></section></>}
- </div>;
+import { EntryModal } from './entry-modal';
+import { useState, FormEvent, useRef, useEffect } from 'react';
+import { TrendingUp, Download, Plus, Trash2 } from 'lucide-react';
+import type { Data, ForecastResult } from './types';
+const qty = (n: string | number) =>
+  new Intl.NumberFormat('es-MX', { maximumFractionDigits: 4 }).format(Number(n));
+const money = (n: string | number) =>
+  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n));
+const day = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+type Option = {
+  kind: 'BUY' | 'TRANSFER';
+  label: string;
+  fromProjectId: string;
+  unitPrice: string;
+  freight: string;
+  arrival: string;
+  confirmed: boolean;
+  reference: string;
+};
+const freshOption = (): Option => ({
+  kind: 'BUY',
+  label: '',
+  fromProjectId: '',
+  unitPrice: '',
+  freight: '',
+  arrival: '',
+  confirmed: false,
+  reference: '',
+});
+export function ForecastPanel({
+  data,
+  projectId,
+  onSupply,
+}: {
+  data: Data;
+  projectId: string;
+  onSupply: (projectId: string) => void;
+}) {
+  const [target, setTarget] = useState(
+      projectId === 'all' ? data.projects.find((p) => p.status === 'ACTIVE')?.id || '' : projectId,
+    ),
+    [material, setMaterial] = useState(data.materials.find((m) => m.type === 'MATERIAL')?.id || ''),
+    [horizon, setHorizon] = useState('28'),
+    [lead, setLead] = useState('5'),
+    [safety, setSafety] = useState('2');
+  const [result, setResult] = useState<ForecastResult | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [options, setOptions] = useState<Option[]>([freshOption()]),
+    [amount, setAmount] = useState(''),
+    [needed, setNeeded] = useState(day()),
+    [comparisonDirty, setComparisonDirty] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
+  const resultsRef = useRef<HTMLDivElement>(null),
+    request = useRef(0);
+  useEffect(
+    () => () => {
+      request.current++;
+    },
+    [],
+  );
+  const m = data.materials.find((m) => m.id === material),
+    p = data.projects.find((p) => p.id === target);
+  function invalidate() {
+    request.current++;
+    setBusy(false);
+    setResult(null);
+    setError('');
+    setOptions([freshOption()]);
+    setComparisonDirty(false);
+  }
+  function editOption(index: number, patch: Partial<Option>) {
+    setOptions(
+      options.map((o, i) =>
+        i === index ? { ...o, ...patch, confirmed: patch.confirmed ?? false } : o,
+      ),
+    );
+    setComparisonDirty(true);
+  }
+  async function calculate(compare = false) {
+    const id = ++request.current;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch('/api/supply/forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: target,
+          materialId: material,
+          horizon: Number(horizon),
+          leadDays: Number(lead),
+          safetyDays: Number(safety),
+          ...(compare
+            ? {
+                comparison: {
+                  quantity: Number(amount),
+                  neededOn: needed,
+                  options: options.map((o) => ({
+                    ...o,
+                    unitPrice: Number(o.unitPrice),
+                    freight: Number(o.freight),
+                  })),
+                },
+              }
+            : {}),
+        }),
+      });
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.message || 'No se pudo calcular el escenario');
+      if (id !== request.current) return;
+      setResult(value);
+      setComparisonDirty(false);
+      if (!compare) {
+        setAmount(Number(value.required) > 0 ? value.required : '');
+        setNeeded(value.firstShortage || day());
+        setOptions([freshOption()]);
+      } else {
+        setComparisonOpen(false);
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } catch (e) {
+      if (id === request.current) setError((e as Error).message);
+    } finally {
+      if (id === request.current) setBusy(false);
+    }
+  }
+  function exportScenario() {
+    if (!result) return;
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            title: 'Escenario de abastecimiento — no es una orden',
+            project: p?.name,
+            material: m?.name,
+            unit: m?.unit,
+            assumptions:
+              'Máximo acumulado entre necesidades y tendencia; días naturales; costos netos MXN; flete no capitalizado; sin reservas.',
+            ...result,
+          },
+          null,
+          2,
+        ),
+      ],
+      { type: 'application/json' },
+    );
+    const url = URL.createObjectURL(blob),
+      a = document.createElement('a');
+    a.href = url;
+    a.download = `abastecimiento-${p?.code}-${result.asOf}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  return (
+    <div className="experience-module forecast-module">
+      <section className="panel experience-form">
+        <div className="forecast-heading">
+          <TrendingUp size={25} />
+          <div>
+            <h2>Anticipa la siguiente compra</h2>
+            <p className="small-note">
+              Escenario de apoyo: revisa las fuentes y confirma la logística antes de actuar. Puedes
+              exportarlo; los escenarios no se guardan al cambiar de obra o salir.
+            </p>
+          </div>
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            calculate();
+          }}
+        >
+          <fieldset disabled={busy}>
+            <div className="form-grid">
+              {projectId === 'all' && (
+                <Field label="Obra a analizar">
+                  <select
+                    required
+                    value={target}
+                    onChange={(e) => {
+                      invalidate();
+                      setTarget(e.target.value);
+                    }}
+                  >
+                    {data.projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.code} · {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              <Field label="Material a analizar">
+                <select
+                  required
+                  value={material}
+                  onChange={(e) => {
+                    invalidate();
+                    setMaterial(e.target.value);
+                  }}
+                >
+                  {data.materials
+                    .filter((m) => m.type === 'MATERIAL')
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} · {m.unit}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              <Field label="Horizonte (días naturales)">
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  required
+                  value={horizon}
+                  onChange={(e) => {
+                    invalidate();
+                    setHorizon(e.target.value);
+                  }}
+                />
+              </Field>
+              <Field label="Plazo para abastecer (días)">
+                <input
+                  type="number"
+                  min="0"
+                  max="365"
+                  required
+                  value={lead}
+                  onChange={(e) => {
+                    invalidate();
+                    setLead(e.target.value);
+                  }}
+                />
+              </Field>
+              <Field label="Reserva preventiva (días de consumo)">
+                <input
+                  type="number"
+                  min="0"
+                  max="30"
+                  required
+                  value={safety}
+                  onChange={(e) => {
+                    invalidate();
+                    setSafety(e.target.value);
+                  }}
+                />
+              </Field>
+            </div>
+            <button className="primary" disabled={!target || !material}>
+              {busy ? 'Calculando…' : 'Calcular escenario'}
+            </button>
+          </fieldset>
+        </form>
+        {p?.status === 'CLOSED' && (
+          <p className="experience-notice">
+            Obra cerrada: consulta histórica. No se habilitan operaciones.
+          </p>
+        )}
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+      </section>
+      {result && (
+        <>
+          <section className="panel experience-form">
+            <div className="panel-head">
+              <div>
+                <span className="eyebrow">
+                  {p?.code} · {m?.name}
+                </span>
+                <h2>
+                  {!result.history.sufficient && !result.needs.length
+                    ? 'Sin datos suficientes para proyectar'
+                    : Number(result.required) > 0
+                      ? 'Hay una brecha de abastecimiento'
+                      : 'Cobertura dentro del escenario'}
+                </h2>
+                <p className="small-note">
+                  Calculado {new Date(result.generatedAt).toLocaleString('es-MX')} · Actualiza el
+                  cálculo si cambian las compras o el almacén.
+                </p>
+              </div>
+              <button className="secondary" onClick={exportScenario} disabled={comparisonDirty}>
+                <Download size={16} />
+                Exportar escenario
+              </button>
+            </div>
+            <div className="mini-stats">
+              <div>
+                <span>Existencia utilizable</span>
+                <strong>
+                  {qty(result.usable)} {m?.unit}
+                </strong>
+              </div>
+              <div>
+                <span>Aporte adicional mínimo en el horizonte</span>
+                <strong>
+                  {qty(result.required)} {m?.unit}
+                </strong>
+              </div>
+              <div>
+                <span>Primera brecha / pedir a más tardar</span>
+                <strong>{result.firstShortage || 'Sin brecha'}</strong>
+                <small>{result.orderBy || 'Sin fecha requerida'}</small>
+              </div>
+            </div>
+            <p className="experience-notice">
+              {result.history.sufficient
+                ? `Ritmo observado: ${qty(result.history.dailyRate!)} ${m?.unit}/día natural. Reserva preventiva: ${qty(result.safety)} ${m?.unit}.`
+                : 'Historial insuficiente: se necesitan al menos 7 días observables y salidas en 3 días distintos. Solo se evalúan necesidades planificadas; no se estima una reserva por consumo.'}{' '}
+              {result.history.activeDays} días con salidas de {result.history.observedDays}{' '}
+              observados.
+            </p>
+            {!result.history.sufficient && !result.needs.length && (
+              <p className="error">
+                Sin necesidades abiertas ni historial suficiente: este resultado no demuestra que la
+                obra esté abastecida.
+              </p>
+            )}
+            <details className="change-history">
+              <summary>Cómo se calcula y qué queda fuera</summary>
+              <p>
+                Se toman hasta 28 días completos anteriores a hoy, desde el inicio de la obra. El
+                ritmo es la suma de salidas dividida entre todos los días naturales observados,
+                incluidos los días sin consumo. Hoy queda fuera para no usar un día incompleto.
+              </p>
+              <p>
+                La demanda acumulada usa el mayor valor entre planificación y tendencia, más la
+                reserva preventiva. Se consideran dos estimaciones de la misma demanda: no se suman.
+                Si corresponden a trabajos distintos, incorpora sus necesidades explícitas en
+                Abastecimiento.
+              </p>
+              <p>
+                Las entradas aprobadas se cuentan en su fecha esperada, antes del consumo del día.
+                Una compra vencida o un traspaso en tránsito no se considera existencia. El aporte
+                adicional es la mayor brecha diaria; una entrada posterior no elimina una falta
+                anterior.
+              </p>
+              <p>
+                Son salidas operativas de esta obra, que pueden contener datos de demostración del
+                piloto. No se extrapolan registros de prueba de la biblioteca ni avances sin un
+                vínculo comprobado con el material. El modelo supone continuidad del ritmo, sin
+                calendario por actividad, estacionalidad ni probabilidades estadísticas.
+              </p>
+            </details>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Plan acumulado</th>
+                    <th>Tendencia acumulada</th>
+                    <th>Entradas acumuladas</th>
+                    <th>Saldo previsto*</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.daily.map((d) => (
+                    <tr key={d.date}>
+                      <td>{d.date}</td>
+                      <td>{qty(d.planned)}</td>
+                      <td>{d.trend === null ? 'Sin estimación' : qty(d.trend)}</td>
+                      <td>{qty(d.arrivals)}</td>
+                      <td>
+                        <span className={Number(d.balance) < 0 ? 'forecast-negative' : ''}>
+                          {qty(d.balance)} {m?.unit}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="small-note">
+              * Después de la reserva preventiva. Un saldo negativo indica brecha, no inventario
+              real negativo.
+            </p>
+            <details className="change-history">
+              <summary>Fuentes del cálculo</summary>
+              <h3>
+                Salidas · {result.history.start} a {result.history.end}
+              </h3>
+              {result.history.sources.length ? (
+                result.history.sources.map((s) => (
+                  <p key={s.id}>
+                    {s.date} · {qty(s.quantity)} {m?.unit} · {s.reference} · <small>{s.id}</small>
+                  </p>
+                ))
+              ) : (
+                <p>Sin salidas en el periodo.</p>
+              )}
+              <h3>Necesidades abiertas</h3>
+              {result.needs.map((n) => (
+                <p key={n.id}>
+                  {n.date} · {qty(n.quantity)} {m?.unit} · {n.purpose}
+                </p>
+              ))}
+              <h3>Compras pendientes</h3>
+              {result.pending.map((o, i) => (
+                <p key={i}>
+                  OC-{o.number} · {qty(o.quantity)} {m?.unit} · {o.date}{' '}
+                  {o.date < result.asOf
+                    ? '· Vencida: excluida'
+                    : o.date > result.daily.at(-1)!.date
+                      ? '· Fuera del horizonte'
+                      : '· Fecha esperada, no recepción'}
+                </p>
+              ))}
+            </details>
+          </section>
+          <section className="panel experience-form">
+            <h2>Historial de proveedores</h2>
+            <p className="small-note">
+              Órdenes de tus obras autorizadas que incluyen este material. Se mide entrega completa
+              de la orden contra fecha esperada; la fecha de registro de recepción aproxima la
+              entrega física. Los nombres equivalentes se agrupan.
+            </p>
+            {!result.suppliers.length && (
+              <p>No hay compras aprobadas para evaluar este material.</p>
+            )}
+            <div className="forecast-cards">
+              {result.suppliers.map((s) => (
+                <article className="detail-box" key={s.name}>
+                  <h3>{s.name}</h3>
+                  <strong>
+                    {s.onTimePercent === null
+                      ? 'Sin muestra evaluable'
+                      : `${s.onTimePercent}% a tiempo`}
+                  </strong>
+                  <p>
+                    {s.onTime} de {s.evaluated} órdenes evaluables · demora media en órdenes
+                    completadas: {s.averageDelay === null ? 'Sin datos' : `${s.averageDelay} días`}
+                  </p>
+                  {s.evaluated < 3 && (
+                    <p className="small-note">Muestra pequeña; no garantiza próximas entregas.</p>
+                  )}
+                  <details>
+                    <summary>Ver órdenes y exclusiones</summary>
+                    {s.sources.map((o) => (
+                      <p key={o.number}>
+                        OC-{o.number} · {data.projects.find((p) => p.id === o.projectId)?.code} ·
+                        prometida {o.due} ·{' '}
+                        {
+                          {
+                            ON_TIME: 'Completa a tiempo',
+                            LATE: 'Completa con retraso',
+                            OVERDUE: 'Pendiente vencida',
+                            PENDING: 'Pendiente, aún en plazo',
+                            UNKNOWN: 'Sin recepción conciliable; excluida',
+                          }[o.result]
+                        }
+                        {o.completed ? ` · registrada ${o.completed}` : ''}
+                      </p>
+                    ))}
+                  </details>
+                </article>
+              ))}
+            </div>
+          </section>
+          <section className="panel experience-form">
+            <h2>Comparar compra y traslado</h2>
+            <p>
+              Evalúa alternativas completas para una cantidad y una fecha. Los sobrantes publicados
+              son candidatos; se verifica su disponibilidad al recalcular.
+            </p>
+            <p className="small-note">
+              Costo comparable = material + flete, en MXN netos sin impuestos. En traslado se usa el
+              costo promedio del almacén de origen, no una cotización editable. El flete solo
+              participa en esta simulación.
+            </p>
+            <button className="secondary" disabled={busy} onClick={() => setComparisonOpen(true)}>
+              Capturar alternativas
+            </button>
+            {comparisonOpen && (
+              <EntryModal
+                title="Alternativas de abastecimiento"
+                busy={busy}
+                error={error}
+                onClose={() => setComparisonOpen(false)}
+              >
+                <form
+                  onSubmit={(e: FormEvent) => {
+                    e.preventDefault();
+                    calculate(true);
+                  }}
+                >
+                  <fieldset disabled={busy}>
+                    <div className="form-grid">
+                      <Field label={`Cantidad a comparar (${m?.unit})`}>
+                        <input
+                          required
+                          type="number"
+                          min="0.0001"
+                          max="100000000"
+                          step="0.0001"
+                          value={amount}
+                          onChange={(e) => {
+                            setAmount(e.target.value);
+                            setOptions(options.map((o) => ({ ...o, confirmed: false })));
+                            setComparisonDirty(true);
+                          }}
+                        />
+                      </Field>
+                      <Field label="Fecha necesaria para esta cantidad">
+                        <input
+                          required
+                          type="date"
+                          value={needed}
+                          onChange={(e) => {
+                            setNeeded(e.target.value);
+                            setOptions(options.map((o) => ({ ...o, confirmed: false })));
+                            setComparisonDirty(true);
+                          }}
+                        />
+                      </Field>
+                    </div>
+                    <p className="small-note">
+                      La cantidad inicial es la máxima brecha del horizonte; la fecha inicial es la
+                      primera brecha. Es una comparación conservadora de un solo lote. Puedes
+                      ajustar ambos valores según tu programa.
+                    </p>
+                    {options.map((o, i) => (
+                      <article className="forecast-option" key={i}>
+                        <div className="forecast-heading">
+                          <h3>Alternativa {i + 1}</h3>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            disabled={options.length === 1}
+                            aria-label={`Eliminar alternativa ${i + 1}`}
+                            onClick={() => {
+                              setOptions(options.filter((_, j) => i !== j));
+                              setComparisonDirty(true);
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                        <div className="form-grid">
+                          <Field label="Tipo">
+                            <select
+                              value={o.kind}
+                              onChange={(e) =>
+                                editOption(i, {
+                                  kind: e.target.value as Option['kind'],
+                                  fromProjectId: '',
+                                  label: '',
+                                  unitPrice: '',
+                                })
+                              }
+                            >
+                              <option value="BUY">Compra a proveedor</option>
+                              <option value="TRANSFER">Traspaso de otra obra</option>
+                            </select>
+                          </Field>
+                          {o.kind === 'BUY' ? (
+                            <>
+                              <Field label="Proveedor / alternativa">
+                                <input
+                                  required
+                                  maxLength={200}
+                                  value={o.label}
+                                  onChange={(e) => editOption(i, { label: e.target.value })}
+                                />
+                              </Field>
+                              <Field label={`Precio neto por ${m?.unit}`}>
+                                <input
+                                  required
+                                  type="number"
+                                  min="0"
+                                  max="100000000"
+                                  step="0.0001"
+                                  value={o.unitPrice}
+                                  onChange={(e) => editOption(i, { unitPrice: e.target.value })}
+                                />
+                              </Field>
+                            </>
+                          ) : (
+                            <Field label="Obra con sobrante liberado">
+                              <select
+                                required
+                                value={o.fromProjectId}
+                                onChange={(e) => {
+                                  const a = result.alternatives.find(
+                                    (a) => a.projectId === e.target.value,
+                                  );
+                                  editOption(i, {
+                                    fromProjectId: e.target.value,
+                                    label: a?.name || '',
+                                    unitPrice: a?.unitCost || '',
+                                  });
+                                }}
+                              >
+                                <option value="">
+                                  {result.alternatives.length
+                                    ? 'Selecciona origen'
+                                    : 'No hay sobrantes publicados en otras obras'}
+                                </option>
+                                {result.alternatives.map((a) => (
+                                  <option key={a.projectId} value={a.projectId}>
+                                    {a.name} · {qty(a.available)} {m?.unit} · {money(a.unitCost)}/
+                                    {m?.unit}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                          )}
+                          <Field label="Flete total neto (MXN)">
+                            <input
+                              required
+                              type="number"
+                              min="0"
+                              max="100000000"
+                              step="0.0001"
+                              value={o.freight}
+                              onChange={(e) => editOption(i, { freight: e.target.value })}
+                            />
+                          </Field>
+                          <Field label="Fecha de llegada">
+                            <input
+                              required
+                              type="date"
+                              value={o.arrival}
+                              onChange={(e) => editOption(i, { arrival: e.target.value })}
+                            />
+                          </Field>
+                          <Field label="Soporte: cotización / responsable / fecha">
+                            <input
+                              required
+                              maxLength={500}
+                              value={o.reference}
+                              onChange={(e) => editOption(i, { reference: e.target.value })}
+                            />
+                          </Field>
+                        </div>
+                        <label className="document-confirm">
+                          <input
+                            type="checkbox"
+                            checked={o.confirmed}
+                            onChange={(e) => editOption(i, { confirmed: e.target.checked })}
+                          />
+                          Confirmé disponibilidad para toda la cantidad, precio, flete y fecha con
+                          el proveedor o responsable.
+                        </label>
+                      </article>
+                    ))}
+                    <div className="log-actions">
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={options.length >= 10}
+                        onClick={() => {
+                          setOptions([...options, freshOption()]);
+                          setComparisonDirty(true);
+                        }}
+                      >
+                        <Plus size={16} />
+                        Añadir alternativa
+                      </button>
+                      <button className="primary">Comparar alternativas</button>
+                    </div>
+                  </fieldset>
+                </form>
+              </EntryModal>
+            )}
+            <div ref={resultsRef} className="plan-anchor">
+              {comparisonDirty && result.comparison ? (
+                <p className="experience-notice">
+                  Cambiaste el escenario. Vuelve a comparar para actualizar el resultado.
+                </p>
+              ) : (
+                result.comparison && (
+                  <>
+                    <h3>
+                      {result.comparison.recommendedIndex === null
+                        ? 'Ninguna alternativa cumple todas las condiciones'
+                        : 'Menor costo entre las alternativas viables'}
+                    </h3>
+                    <div className="forecast-cards">
+                      {result.comparison.options.map((o) => (
+                        <article
+                          key={o.index}
+                          className={
+                            'detail-box ' +
+                            (o.index === result.comparison!.recommendedIndex ? 'forecast-best' : '')
+                          }
+                        >
+                          <span className="badge">
+                            {o.index === result.comparison!.recommendedIndex
+                              ? 'Recomendada'
+                              : o.eligible
+                                ? 'Viable'
+                                : 'Revisar'}
+                          </span>
+                          <h3>{o.label}</h3>
+                          <strong>{money(o.total)}</strong>
+                          <p>
+                            {qty(result.comparison!.quantity)} {m?.unit} × {money(o.unitPrice)} +{' '}
+                            {money(o.freight)} de flete · llega {o.arrival}
+                          </p>
+                          {o.reasons.map((reason) => (
+                            <p key={reason} className="forecast-negative">
+                              {reason}
+                            </p>
+                          ))}
+                          <p className="small-note">Soporte: {o.reference || 'No proporcionado'}</p>
+                        </article>
+                      ))}
+                    </div>
+                    {result.comparison.saving !== null && (
+                      <p>
+                        Diferencia entre la opción viable más costosa y la recomendada:{' '}
+                        {money(result.comparison.saving)}. No representa un ahorro realizado.
+                      </p>
+                    )}
+                    <p className="experience-notice">
+                      Esta simulación no reserva sobrantes, despacha, compra ni registra pagos. No
+                      combina lotes parciales ni optimiza varias obras a la vez. Antes de ejecutar,
+                      revalida las existencias y los acuerdos.
+                    </p>
+                    <button className="secondary" onClick={() => onSupply(target)}>
+                      Ir a Abastecimiento
+                    </button>
+                  </>
+                )
+              )}
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
 }

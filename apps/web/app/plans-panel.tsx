@@ -1,100 +1,953 @@
 'use client';
-import {useCan} from './access';
-import {useEffect,useRef,useState,FormEvent} from 'react';
-import {Plus,MapPin,Upload,ArrowLeft,ArrowRight,Download,Layers,Check,RefreshCw,X} from 'lucide-react';
-import type {Data,Drawing,DrawingVersion,PlanIssue} from './types';
-import {PlanViewer} from './plan-viewer';
-type Save=(path:string,body:unknown,message:string)=>Promise<boolean>;
-const statusLabel:Record<string,string>={OPEN:'Abierta',IN_PROGRESS:'En atención',RESOLVED:'Resuelta'};
-const actionLabel:Record<string,string>={CREATED:'Registro',COMMENT:'Comentario',START:'Inicio de atención',RESOLVE:'Resolución',REOPEN:'Reapertura',ASSIGN:'Responsable / fecha actualizados'};
-const priorityLabel:Record<string,string>={LOW:'Baja',NORMAL:'Normal',HIGH:'Alta'};
-const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Mexico_City'});
-const timestamp=(s:string)=>new Date(s).toLocaleString('es-MX',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Mexico_City'});
-async function fileData(file:File){return new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('No se pudo leer el archivo'));reader.readAsDataURL(file);});}
-function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="field"><span>{label}</span>{children}</label>;}
-function PlanUpload({data,projectId,drawing,busy,save,setBusy,onDone,onCancel}:{data:Data;projectId:string;drawing?:Drawing;busy:boolean;save:Save;setBusy:(v:boolean)=>void;onDone:()=>void;onCancel:()=>void}){
- const [error,setError]=useState(''),[file,setFile]=useState<File|null>(null);
- async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!file)return;const fields=Object.fromEntries(new FormData(e.currentTarget));setBusy(true);setError('');
-  try{if(file.size>15*1024*1024||!file.size)throw new Error('Usa un PDF de hasta 15 MB.');const base64=await fileData(file);
-   if(await save(drawing?'drawings/'+drawing.id+'/versions':'drawings',{...fields,name:file.name,base64},drawing?'Nueva versión guardada; las incidencias anteriores se conservan':'Plano guardado'))onDone();
-  }catch(e){setError((e as Error).message);}finally{setBusy(false);}
- }
- return <form className="panel plan-form" onSubmit={submit}><div className="panel-head"><div><h2>{drawing?'Nueva versión · '+drawing.code:'Registrar plano'}</h2><p>PDF sin contraseña · hasta 15 MB y 20 páginas por versión</p></div><button type="button" className="icon-button" aria-label="Cancelar carga de plano" disabled={busy} onClick={onCancel}><X size={18}/></button></div><fieldset disabled={busy}>
-  {!drawing&&<><Field label="Obra del plano"><select name="projectId" defaultValue={projectId==='all'?data.projects.find(p=>p.status==='ACTIVE')?.id:projectId} required>{data.projects.filter(p=>p.status==='ACTIVE'&&(projectId==='all'||p.id===projectId)).map(p=><option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</select></Field><div className="form-grid"><Field label="Clave del plano"><input name="code" maxLength={24} required placeholder="ARQ-01"/></Field><Field label="Nombre del plano"><input name="title" maxLength={200} required placeholder="Planta arquitectónica · edificio A"/></Field></div></>}
-  <div className="form-grid"><Field label="Identificador de revisión"><input name="label" required maxLength={200} placeholder="Ej. Rev. A · emitido para construcción"/></Field><Field label="Archivo PDF"><input type="file" name="pdfFile" accept="application/pdf,.pdf" required onChange={e=>setFile(e.target.files?.[0]||null)}/></Field></div>
-  <Field label="Descripción de esta versión"><textarea name="note" required rows={2} maxLength={2000} placeholder="Describe el alcance o los cambios de esta revisión"/></Field>
-  {drawing&&<p className="small-note">Esta carga crea una versión nueva. Las anteriores y sus marcadores conservarán su página y ubicación originales.</p>}
-  {error&&<p role="alert" className="error">{error}</p>}<div className="log-actions"><button type="button" className="secondary" onClick={onCancel}>Cancelar</button><button className="primary" disabled={!file}><Upload size={16}/>{busy?'Guardando…':'Guardar plano'}</button></div>
- </fieldset></form>;
+import { EntryModal } from './entry-modal';
+import { useCan } from './access';
+import { useEffect, useRef, useState, FormEvent } from 'react';
+import {
+  Plus,
+  MapPin,
+  Upload,
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  Layers,
+  Check,
+  RefreshCw,
+  X,
+} from 'lucide-react';
+import type { Data, Drawing, DrawingVersion, PlanIssue } from './types';
+import { PlanViewer } from './plan-viewer';
+type Save = (path: string, body: unknown, message: string) => Promise<boolean>;
+const statusLabel: Record<string, string> = {
+  OPEN: 'Abierta',
+  IN_PROGRESS: 'En atención',
+  RESOLVED: 'Resuelta',
+};
+const actionLabel: Record<string, string> = {
+  CREATED: 'Registro',
+  COMMENT: 'Comentario',
+  START: 'Inicio de atención',
+  RESOLVE: 'Resolución',
+  REOPEN: 'Reapertura',
+  ASSIGN: 'Responsable / fecha actualizados',
+};
+const priorityLabel: Record<string, string> = { LOW: 'Baja', NORMAL: 'Normal', HIGH: 'Alta' };
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+const timestamp = (s: string) =>
+  new Date(s).toLocaleString('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'America/Mexico_City',
+  });
+async function fileData(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
 }
-function NewIssue({drawing,version,page,point,busy,save,onDone,onCancel}:{drawing:Drawing;version:DrawingVersion;page:number;point:{x:number;y:number};busy:boolean;save:Save;onDone:()=>void;onCancel:()=>void}){
- async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const v=Object.fromEntries(new FormData(e.currentTarget));if(await save(`drawings/${drawing.id}/versions/${version.id}/issues`,{...v,page,x:Number(v.x)/100,y:Number(v.y)/100},'Incidencia ubicada en el plano'))onDone();}
- return <form className="panel plan-form" onSubmit={submit}><h3>Nueva incidencia · v{version.number} · página {page}</h3><p className="small-note">{drawing.project.name} · {drawing.code} · {version.label}</p><fieldset disabled={busy}>
-  <Field label="Título de la incidencia"><input name="title" required maxLength={200} placeholder="Ej. Revisar paso de instalación"/></Field><Field label="Descripción del pendiente"><textarea name="description" rows={3} required maxLength={5000}/></Field>
-  <div className="form-grid"><Field label="Responsable"><input name="assignee" required maxLength={200} placeholder="Nombre del responsable"/></Field><Field label="Vencimiento"><input name="dueDate" type="date" defaultValue={today()} required/></Field><Field label="Prioridad"><select name="priority" defaultValue="NORMAL"><option value="LOW">Baja</option><option value="NORMAL">Normal</option><option value="HIGH">Alta</option></select></Field></div>
-  <div className="form-grid"><Field label="Ubicación horizontal (%)"><input name="x" type="number" min="0" max="100" step="any" defaultValue={+(point.x*100).toFixed(3)} required/></Field><Field label="Ubicación vertical (%)"><input name="y" type="number" min="0" max="100" step="any" defaultValue={+(point.y*100).toFixed(3)} required/></Field></div>
-  <p className="small-note">Ubicación desde la esquina superior izquierda de esta página. El responsable se registra por nombre; aún no se envían notificaciones.</p><div className="log-actions"><button type="button" className="secondary" onClick={onCancel}>Cancelar</button><button className="primary"><MapPin size={15}/>Guardar incidencia</button></div>
- </fieldset></form>;
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
 }
-function IssueDetail({issue,version,drawing,busy,save,setBusy,onClose}:{issue:PlanIssue;version:DrawingVersion;drawing:Drawing;busy:boolean;save:Save;setBusy:(v:boolean)=>void;onClose:()=>void}){
- const [action,setAction]=useState('COMMENT'),[files,setFiles]=useState<File[]>([]),[localError,setLocalError]=useState('');
- const form=useRef<HTMLFormElement>(null);
- const can=useCan();const writable=can('plans')&&drawing.project.status==='ACTIVE';
- async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const fields=Object.fromEntries(new FormData(e.currentTarget));setLocalError('');setBusy(true);try{
-  if(files.length>3||files.some(f=>!f.size||f.size>8*1024*1024)||files.reduce((n,f)=>n+f.size,0)>12*1024*1024)throw new Error('Máximo 3 fotos: 8 MB cada una y 12 MB en total.');
-  if(action==='RESOLVE'&&!files.length)throw new Error('Adjunta al menos una foto para respaldar la resolución.');
-  const evidence=await Promise.all(files.map(async f=>({name:f.name,mime:f.type,base64:await fileData(f)})));
-  if(await save('plan-issues/'+issue.id+'/events',{...fields,action,expectedRevision:issue.revision,evidence},'Seguimiento guardado')){setAction('COMMENT');setFiles([]);form.current?.reset();}
- }catch(e){setLocalError((e as Error).message);}finally{setBusy(false);}}
- return <section className="panel issue-detail"><div className="panel-head"><div><span className="eyebrow">INC-{issue.number} · {drawing.code} · v{version.number} · PÁG. {issue.page}</span><h2>{issue.title}</h2></div><button className="icon-button" aria-label="Cerrar detalle de incidencia" disabled={busy} onClick={onClose}><X size={18}/></button></div>
-  <div className="issue-tags"><span className={'issue-status '+issue.status}>{statusLabel[issue.status]}</span><span>Prioridad {priorityLabel[issue.priority].toLowerCase()}</span>{issue.status!=='RESOLVED'&&issue.dueDate.slice(0,10)<today()&&<span className="overdue">Vencida</span>}</div>
-  <p className="preserve">{issue.description}</p><div className="log-facts"><span>Responsable: {issue.assignee}</span><span>Vence: {issue.dueDate.slice(0,10)}</span></div>
-  <h3>Historial de seguimiento</h3><div className="issue-history">{issue.events.map(event=><article key={event.id}><strong>{actionLabel[event.action]}</strong><small>{event.author} · {timestamp(event.createdAt)}</small><p className="preserve">{event.note}</p>{event.action==='ASSIGN'&&<p>{event.assignee} · vence {event.dueDate.slice(0,10)}</p>}{event.evidence.length>0&&<div className="issue-photos">{event.evidence.map(f=><a key={f.id} href={`/api/plan-issues/${issue.id}/evidence/${f.id}`} target="_blank" rel="noreferrer"><img src={`/api/plan-issues/${issue.id}/evidence/${f.id}`} alt={'Evidencia: '+f.name} loading="lazy"/><span>{f.name}</span></a>)}</div>}</article>)}</div>
-  {writable&&<form ref={form} className="log-section" onSubmit={submit}><h3>Registrar seguimiento</h3><fieldset disabled={busy}><Field label="Acción de seguimiento"><select value={action} onChange={e=>setAction(e.target.value)}><option value="COMMENT">Añadir comentario</option>{issue.status==='OPEN'&&<option value="START">Iniciar atención</option>}{issue.status!=='RESOLVED'?<><option value="RESOLVE">Resolver con evidencia</option><option value="ASSIGN">Cambiar responsable / fecha</option></>:<option value="REOPEN">Reabrir incidencia</option>}</select></Field>
-  {action==='ASSIGN'&&<div className="form-grid"><Field label="Nuevo responsable"><input name="assignee" defaultValue={issue.assignee} required maxLength={200}/></Field><Field label="Nuevo vencimiento"><input name="dueDate" type="date" defaultValue={issue.dueDate.slice(0,10)} required/></Field></div>}
-  <Field label={action==='RESOLVE'?'Explicación de la resolución':'Comentario o motivo'}><textarea name="note" required maxLength={5000} rows={3}/></Field>
-  <Field label={action==='RESOLVE'?'Fotos de resolución (obligatorias)':'Fotos de seguimiento (opcional)'}><input type="file" accept="image/jpeg,image/png,image/webp" multiple required={action==='RESOLVE'} onChange={e=>setFiles(Array.from(e.target.files||[]))}/></Field><p className="small-note">Hasta 3 fotos · 8 MB por foto · 12 MB por actualización. Cada registro conserva autor, fecha y evidencia.</p>
-  {localError&&<p className="error" role="alert">{localError}</p>}<button className="primary"><Check size={15}/>{busy?'Guardando…':'Guardar seguimiento'}</button></fieldset></form>}
- </section>;
+function PlanUpload({
+  data,
+  projectId,
+  drawing,
+  busy,
+  save,
+  setBusy,
+  onDone,
+  onCancel,
+}: {
+  data: Data;
+  projectId: string;
+  drawing?: Drawing;
+  busy: boolean;
+  save: Save;
+  setBusy: (v: boolean) => void;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [error, setError] = useState(''),
+    [file, setFile] = useState<File | null>(null);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!file) return;
+    const fields = Object.fromEntries(new FormData(e.currentTarget));
+    setBusy(true);
+    setError('');
+    try {
+      if (file.size > 15 * 1024 * 1024 || !file.size) throw new Error('Usa un PDF de hasta 15 MB.');
+      const base64 = await fileData(file);
+      if (
+        await save(
+          drawing ? 'drawings/' + drawing.id + '/versions' : 'drawings',
+          { ...fields, name: file.name, base64 },
+          drawing
+            ? 'Nueva versión guardada; las incidencias anteriores se conservan'
+            : 'Plano guardado',
+        )
+      )
+        onDone();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="panel plan-form" onSubmit={submit}>
+      <div className="panel-head">
+        <div>
+          <h2>{drawing ? 'Nueva versión · ' + drawing.code : 'Registrar plano'}</h2>
+          <p>PDF sin contraseña · hasta 15 MB y 20 páginas por versión</p>
+        </div>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Cancelar carga de plano"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <fieldset disabled={busy}>
+        {!drawing && (
+          <>
+            <Field label="Obra del plano">
+              <select
+                name="projectId"
+                defaultValue={
+                  projectId === 'all'
+                    ? data.projects.find((p) => p.status === 'ACTIVE')?.id
+                    : projectId
+                }
+                required
+              >
+                {data.projects
+                  .filter(
+                    (p) => p.status === 'ACTIVE' && (projectId === 'all' || p.id === projectId),
+                  )
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} · {p.name}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            <div className="form-grid">
+              <Field label="Clave del plano">
+                <input name="code" maxLength={24} required placeholder="ARQ-01" />
+              </Field>
+              <Field label="Nombre del plano">
+                <input
+                  name="title"
+                  maxLength={200}
+                  required
+                  placeholder="Planta arquitectónica · edificio A"
+                />
+              </Field>
+            </div>
+          </>
+        )}
+        <div className="form-grid">
+          <Field label="Identificador de revisión">
+            <input
+              name="label"
+              required
+              maxLength={200}
+              placeholder="Ej. Rev. A · emitido para construcción"
+            />
+          </Field>
+          <Field label="Archivo PDF">
+            <input
+              type="file"
+              name="pdfFile"
+              accept="application/pdf,.pdf"
+              required
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+          </Field>
+        </div>
+        <Field label="Descripción de esta versión">
+          <textarea
+            name="note"
+            required
+            rows={2}
+            maxLength={2000}
+            placeholder="Describe el alcance o los cambios de esta revisión"
+          />
+        </Field>
+        {drawing && (
+          <p className="small-note">
+            Esta carga crea una versión nueva. Las anteriores y sus marcadores conservarán su página
+            y ubicación originales.
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <div className="log-actions">
+          <button type="button" className="secondary" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button className="primary" disabled={!file}>
+            <Upload size={16} />
+            {busy ? 'Guardando…' : 'Guardar plano'}
+          </button>
+        </div>
+      </fieldset>
+    </form>
+  );
 }
-export function PlansPanel({data,projectId,busy,error,save,setBusy,refresh}:{data:Data;projectId:string;busy:boolean;error:string;save:Save;setBusy:(v:boolean)=>void;refresh:()=>Promise<void>}){
- const drawings=data.drawings.filter(d=>projectId==='all'||d.projectId===projectId);
- const [drawingId,setDrawingId]=useState(''),[versionId,setVersionId]=useState(''),[page,setPage]=useState(1),[zoom,setZoom]=useState(100),[selectedId,setSelectedId]=useState(''),[upload,setUpload]=useState<'new'|'version'|null>(null),[placing,setPlacing]=useState(false),[point,setPoint]=useState<{x:number;y:number}|null>(null),[filter,setFilter]=useState('pending'),[search,setSearch]=useState('');
- const drawing=drawings.find(d=>d.id===drawingId)||drawings[0],version=drawing?.versions.find(v=>v.id===versionId)||drawing?.versions[0];
- const ids=new Set(drawing?.versions.map(v=>v.id));
- const issues=data.planIssues.filter(i=>ids.has(i.versionId)),selected=issues.find(i=>i.id===selectedId),selectedVersion=drawing?.versions.find(v=>v.id===selected?.versionId);
- const pending=issues.filter(i=>i.status!=='RESOLVED'),oldPending=pending.filter(i=>i.versionId!==drawing?.versions[0]?.id);
- const can=useCan();const writable=can('plans')&&drawing?.project.status==='ACTIVE';
- function resetView(){setPage(1);setSelectedId('');setPoint(null);setPlacing(false);setZoom(100);}
- function selectIssue(i:PlanIssue){setSelectedId(i.id);setVersionId(i.versionId);setPage(i.page);setPoint(null);setPlacing(false);}
- const visible=issues.filter(i=>(filter==='all'||filter==='pending'&&i.status!=='RESOLVED'||i.status===filter)&&[i.title,i.assignee,'INC-'+i.number].join(' ').toLowerCase().includes(search.toLowerCase()));
- const errorAnchor=useRef<HTMLDivElement>(null),formAnchor=useRef<HTMLDivElement>(null),detailAnchor=useRef<HTMLDivElement>(null),uploadAnchor=useRef<HTMLDivElement>(null);
- useEffect(()=>{if(error)errorAnchor.current?.scrollIntoView({behavior:'smooth',block:'start'});},[error]);
- useEffect(()=>{if(point)formAnchor.current?.scrollIntoView({behavior:'smooth',block:'start'});},[point]);
- useEffect(()=>{if(selectedId)detailAnchor.current?.scrollIntoView({behavior:'smooth',block:'start'});},[selectedId]);
- useEffect(()=>{if(upload)uploadAnchor.current?.scrollIntoView({behavior:'smooth',block:'start'});},[upload]);
- const activeAvailable=can('plans')&&data.projects.some(p=>p.status==='ACTIVE'&&(projectId==='all'||p.id===projectId));
- return <div className="plans-module">
-  <div className="plans-actions"><p className="small-note">Planos por obra, versiones conservadas y pendientes con ubicación.</p><button className="primary" disabled={busy||!activeAvailable} onClick={()=>{setUpload('new');setPoint(null);setPlacing(false);}}><Plus size={16}/>Registrar plano</button></div>
-  {error&&<div ref={errorAnchor} className="error plan-anchor" role="alert">{error}<button className="text-button" disabled={busy} onClick={()=>refresh().catch(()=>{})}><RefreshCw size={14}/>Actualizar datos</button></div>}
-  {upload&&<div ref={uploadAnchor} className="plan-anchor"><PlanUpload key={upload+(drawing?.id||'')} data={data} projectId={projectId} drawing={upload==='version'?drawing:undefined} busy={busy} save={save} setBusy={setBusy} onCancel={()=>setUpload(null)} onDone={()=>{setUpload(null);if(upload==='new')setDrawingId('');setVersionId('');resetView();}}/></div>}
-  {!drawings.length&&!upload&&<div className="panel empty"><Layers size={30}/><h3>Aún no hay planos en esta vista</h3><p>Registra un PDF para ubicar incidencias y seguir su resolución.</p></div>}
-  {drawing&&version&&<>
-   <div className="panel plan-selection"><Field label="Plano de trabajo"><select value={drawing.id} disabled={busy} onChange={e=>{setDrawingId(e.target.value);setVersionId('');setUpload(null);resetView();}}>{drawings.map(d=><option key={d.id} value={d.id}>{d.project.code} · {d.code} · {d.name}</option>)}</select></Field><div><span className="eyebrow">{drawing.project.name}</span><h2>{drawing.code} · {drawing.name}</h2><p>{drawing.versions.length} versiones · {pending.length} pendientes · {issues.filter(i=>i.status==='RESOLVED').length} resueltas</p></div></div>
-   {oldPending.length>0&&<div className="plan-notice"><Layers size={18}/><p><strong>{oldPending.length} pendientes en versiones anteriores.</strong> Siguen en la lista de incidencias. Selecciona uno para abrir su versión y ubicación originales.</p></div>}
-   <section id="current-plan-view" className="panel plan-workspace plan-anchor"><div className="plan-tools"><Field label="Versión del plano"><select value={version.id} disabled={busy} onChange={e=>{setVersionId(e.target.value);resetView();}}>{drawing.versions.map((v,index)=><option key={v.id} value={v.id}>v{v.number} · {v.label}{index===0?' · más reciente':''}</option>)}</select></Field><button className="secondary" disabled={busy||!writable} onClick={()=>{setUpload('version');setPoint(null);setPlacing(false);}}><Upload size={15}/>Nueva versión</button><a className="secondary" href={`/api/drawings/${drawing.id}/versions/${version.id}/file`}><Download size={15}/>PDF original</a></div>
-    <p className="version-description">{version.note} <span>· {version.author} · {timestamp(version.createdAt)}</span></p>
-    {version.id!==drawing.versions[0]?.id&&<p className="plan-old">Consultando una versión anterior. Sus marcadores no se trasladan a la revisión nueva.</p>}
-    <div className="plan-page-tools"><button className="icon-button" aria-label="Página anterior" disabled={page<=1||busy} onClick={()=>{setPage(page-1);setPoint(null);setPlacing(false);}}><ArrowLeft size={17}/></button><Field label="Página del plano"><select value={page} disabled={busy} onChange={e=>{setPage(Number(e.target.value));setPoint(null);setPlacing(false);}}>{Array.from({length:version.pageCount},(_,i)=><option key={i} value={i+1}>Página {i+1} de {version.pageCount}</option>)}</select></Field><button className="icon-button" aria-label="Página siguiente" disabled={page>=version.pageCount||busy} onClick={()=>{setPage(page+1);setPoint(null);setPlacing(false);}}><ArrowRight size={17}/></button><Field label="Ampliación"><select value={zoom} onChange={e=>setZoom(Number(e.target.value))}><option value="100">Ajustar ancho</option><option value="150">150 %</option><option value="200">200 %</option></select></Field><button className={placing?'primary':'secondary'} disabled={busy||!writable} onClick={()=>{setPlacing(!placing);setPoint(null);setSelectedId('');}}><MapPin size={15}/>{placing?'Cancelar ubicación':'Marcar incidencia'}</button></div>
-    {placing&&<div className="plan-notice"><p>Pulsa sobre la página para ubicar el pendiente, o <button className="text-button" onClick={()=>{setPoint({x:.5,y:.5});setPlacing(false);}}>ingresa la ubicación por porcentaje</button>.</p></div>}
-    <PlanViewer key={version.id+':'+page} drawingId={drawing.id} version={version} page={page} zoom={zoom} issues={issues.filter(i=>i.versionId===version.id&&i.page===page)} selectedId={selectedId} placing={placing&&!busy} onSelect={selectIssue} onPlace={p=>{setPoint(p);setPlacing(false);}}/>
-    <p className="plan-legend"><span className="issue-status OPEN">Abierta</span><span className="issue-status IN_PROGRESS">En atención</span><span className="issue-status RESOLVED">Resuelta</span><span>Marcadores de esta página y versión</span></p>
-   </section>
-   {point&&<div ref={formAnchor} className="plan-anchor"><NewIssue key={version.id+':'+page+':'+point.x+':'+point.y} drawing={drawing} version={version} page={page} point={point} busy={busy} save={save} onCancel={()=>setPoint(null)} onDone={()=>setPoint(null)}/></div>}
-   <div className={'plan-bottom '+(selected?'with-detail':'')}><section className="panel issue-list"><div className="panel-head"><div><h2>Incidencias del plano</h2><p>Todas las versiones · selecciona para ubicar y dar seguimiento</p></div></div><div className="issue-filters"><input aria-label="Buscar incidencia o responsable" placeholder="Buscar incidencia o responsable…" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Filtrar incidencias" value={filter} onChange={e=>setFilter(e.target.value)}><option value="pending">Pendientes</option><option value="all">Todas</option><option value="OPEN">Abiertas</option><option value="IN_PROGRESS">En atención</option><option value="RESOLVED">Resueltas</option></select></div>
-    {!visible.length&&<div className="empty"><Check size={24}/><h3>Sin incidencias en este filtro</h3><p>Usa «Marcar incidencia» sobre el plano para registrar un pendiente.</p></div>}
-    {visible.map(i=><button key={i.id} className={'issue-row '+(selectedId===i.id?'selected':'')} disabled={busy} onClick={()=>selectIssue(i)}><div className="issue-row-top"><strong>INC-{i.number}</strong><span className={'issue-status '+i.status}>{statusLabel[i.status]}</span></div><h3>{i.title}</h3><p>{i.assignee} · vence {i.dueDate.slice(0,10)}</p><small>v{drawing.versions.find(v=>v.id===i.versionId)?.number} · página {i.page} · prioridad {priorityLabel[i.priority].toLowerCase()}{i.status!=='RESOLVED'&&i.dueDate.slice(0,10)<today()?' · VENCIDA':''}</small></button>)}
-   </section>{selected&&selectedVersion&&<div ref={detailAnchor} className="plan-anchor"><button className="secondary locate-issue" disabled={busy} onClick={()=>document.getElementById("current-plan-view")?.scrollIntoView({behavior:"smooth",block:"start"})}><MapPin size={15}/>Ver marcador en el plano</button><IssueDetail key={selected.id+':'+selected.revision} issue={selected} version={selectedVersion} drawing={drawing} busy={busy} save={save} setBusy={setBusy} onClose={()=>setSelectedId('')}/></div>}</div>
-  </>}
- </div>;
+function NewIssue({
+  drawing,
+  version,
+  page,
+  point,
+  busy,
+  save,
+  onDone,
+  onCancel,
+}: {
+  drawing: Drawing;
+  version: DrawingVersion;
+  page: number;
+  point: { x: number; y: number };
+  busy: boolean;
+  save: Save;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(e.currentTarget));
+    if (
+      await save(
+        `drawings/${drawing.id}/versions/${version.id}/issues`,
+        { ...v, page, x: Number(v.x) / 100, y: Number(v.y) / 100 },
+        'Incidencia ubicada en el plano',
+      )
+    )
+      onDone();
+  }
+  return (
+    <form className="panel plan-form" onSubmit={submit}>
+      <h3>
+        Nueva incidencia · v{version.number} · página {page}
+      </h3>
+      <p className="small-note">
+        {drawing.project.name} · {drawing.code} · {version.label}
+      </p>
+      <fieldset disabled={busy}>
+        <Field label="Título de la incidencia">
+          <input
+            name="title"
+            required
+            maxLength={200}
+            placeholder="Ej. Revisar paso de instalación"
+          />
+        </Field>
+        <Field label="Descripción del pendiente">
+          <textarea name="description" rows={3} required maxLength={5000} />
+        </Field>
+        <div className="form-grid">
+          <Field label="Responsable">
+            <input name="assignee" required maxLength={200} placeholder="Nombre del responsable" />
+          </Field>
+          <Field label="Vencimiento">
+            <input name="dueDate" type="date" defaultValue={today()} required />
+          </Field>
+          <Field label="Prioridad">
+            <select name="priority" defaultValue="NORMAL">
+              <option value="LOW">Baja</option>
+              <option value="NORMAL">Normal</option>
+              <option value="HIGH">Alta</option>
+            </select>
+          </Field>
+        </div>
+        <div className="form-grid">
+          <Field label="Ubicación horizontal (%)">
+            <input
+              name="x"
+              type="number"
+              min="0"
+              max="100"
+              step="any"
+              defaultValue={+(point.x * 100).toFixed(3)}
+              required
+            />
+          </Field>
+          <Field label="Ubicación vertical (%)">
+            <input
+              name="y"
+              type="number"
+              min="0"
+              max="100"
+              step="any"
+              defaultValue={+(point.y * 100).toFixed(3)}
+              required
+            />
+          </Field>
+        </div>
+        <p className="small-note">
+          Ubicación desde la esquina superior izquierda de esta página. El responsable se registra
+          por nombre; aún no se envían notificaciones.
+        </p>
+        <div className="log-actions">
+          <button type="button" className="secondary" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button className="primary">
+            <MapPin size={15} />
+            Guardar incidencia
+          </button>
+        </div>
+      </fieldset>
+    </form>
+  );
+}
+function IssueDetail({
+  issue,
+  version,
+  drawing,
+  busy,
+  save,
+  setBusy,
+  onClose,
+}: {
+  issue: PlanIssue;
+  version: DrawingVersion;
+  drawing: Drawing;
+  busy: boolean;
+  save: Save;
+  setBusy: (v: boolean) => void;
+  onClose: () => void;
+}) {
+  const [action, setAction] = useState('COMMENT'),
+    [files, setFiles] = useState<File[]>([]),
+    [localError, setLocalError] = useState('');
+  const form = useRef<HTMLFormElement>(null);
+  const can = useCan();
+  const writable = can('plans') && drawing.project.status === 'ACTIVE';
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fields = Object.fromEntries(new FormData(e.currentTarget));
+    setLocalError('');
+    setBusy(true);
+    try {
+      if (
+        files.length > 3 ||
+        files.some((f) => !f.size || f.size > 8 * 1024 * 1024) ||
+        files.reduce((n, f) => n + f.size, 0) > 12 * 1024 * 1024
+      )
+        throw new Error('Máximo 3 fotos: 8 MB cada una y 12 MB en total.');
+      if (action === 'RESOLVE' && !files.length)
+        throw new Error('Adjunta al menos una foto para respaldar la resolución.');
+      const evidence = await Promise.all(
+        files.map(async (f) => ({ name: f.name, mime: f.type, base64: await fileData(f) })),
+      );
+      if (
+        await save(
+          'plan-issues/' + issue.id + '/events',
+          { ...fields, action, expectedRevision: issue.revision, evidence },
+          'Seguimiento guardado',
+        )
+      ) {
+        setAction('COMMENT');
+        setFiles([]);
+        form.current?.reset();
+      }
+    } catch (e) {
+      setLocalError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="panel issue-detail">
+      <div className="panel-head">
+        <div>
+          <span className="eyebrow">
+            INC-{issue.number} · {drawing.code} · v{version.number} · PÁG. {issue.page}
+          </span>
+          <h2>{issue.title}</h2>
+        </div>
+        <button
+          className="icon-button"
+          aria-label="Cerrar detalle de incidencia"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <div className="issue-tags">
+        <span className={'issue-status ' + issue.status}>{statusLabel[issue.status]}</span>
+        <span>Prioridad {priorityLabel[issue.priority].toLowerCase()}</span>
+        {issue.status !== 'RESOLVED' && issue.dueDate.slice(0, 10) < today() && (
+          <span className="overdue">Vencida</span>
+        )}
+      </div>
+      <p className="preserve">{issue.description}</p>
+      <div className="log-facts">
+        <span>Responsable: {issue.assignee}</span>
+        <span>Vence: {issue.dueDate.slice(0, 10)}</span>
+      </div>
+      <h3>Historial de seguimiento</h3>
+      <div className="issue-history">
+        {issue.events.map((event) => (
+          <article key={event.id}>
+            <strong>{actionLabel[event.action]}</strong>
+            <small>
+              {event.author} · {timestamp(event.createdAt)}
+            </small>
+            <p className="preserve">{event.note}</p>
+            {event.action === 'ASSIGN' && (
+              <p>
+                {event.assignee} · vence {event.dueDate.slice(0, 10)}
+              </p>
+            )}
+            {event.evidence.length > 0 && (
+              <div className="issue-photos">
+                {event.evidence.map((f) => (
+                  <a
+                    key={f.id}
+                    href={`/api/plan-issues/${issue.id}/evidence/${f.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <img
+                      src={`/api/plan-issues/${issue.id}/evidence/${f.id}`}
+                      alt={'Evidencia: ' + f.name}
+                      loading="lazy"
+                    />
+                    <span>{f.name}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+      {writable && (
+        <form ref={form} className="log-section" onSubmit={submit}>
+          <h3>Registrar seguimiento</h3>
+          <fieldset disabled={busy}>
+            <Field label="Acción de seguimiento">
+              <select value={action} onChange={(e) => setAction(e.target.value)}>
+                <option value="COMMENT">Añadir comentario</option>
+                {issue.status === 'OPEN' && <option value="START">Iniciar atención</option>}
+                {issue.status !== 'RESOLVED' ? (
+                  <>
+                    <option value="RESOLVE">Resolver con evidencia</option>
+                    <option value="ASSIGN">Cambiar responsable / fecha</option>
+                  </>
+                ) : (
+                  <option value="REOPEN">Reabrir incidencia</option>
+                )}
+              </select>
+            </Field>
+            {action === 'ASSIGN' && (
+              <div className="form-grid">
+                <Field label="Nuevo responsable">
+                  <input name="assignee" defaultValue={issue.assignee} required maxLength={200} />
+                </Field>
+                <Field label="Nuevo vencimiento">
+                  <input
+                    name="dueDate"
+                    type="date"
+                    defaultValue={issue.dueDate.slice(0, 10)}
+                    required
+                  />
+                </Field>
+              </div>
+            )}
+            <Field
+              label={action === 'RESOLVE' ? 'Explicación de la resolución' : 'Comentario o motivo'}
+            >
+              <textarea name="note" required maxLength={5000} rows={3} />
+            </Field>
+            <Field
+              label={
+                action === 'RESOLVE'
+                  ? 'Fotos de resolución (obligatorias)'
+                  : 'Fotos de seguimiento (opcional)'
+              }
+            >
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                required={action === 'RESOLVE'}
+                onChange={(e) => setFiles(Array.from(e.target.files || []))}
+              />
+            </Field>
+            <p className="small-note">
+              Hasta 3 fotos · 8 MB por foto · 12 MB por actualización. Cada registro conserva autor,
+              fecha y evidencia.
+            </p>
+            {localError && (
+              <p className="error" role="alert">
+                {localError}
+              </p>
+            )}
+            <button className="primary">
+              <Check size={15} />
+              {busy ? 'Guardando…' : 'Guardar seguimiento'}
+            </button>
+          </fieldset>
+        </form>
+      )}
+    </section>
+  );
+}
+export function PlansPanel({
+  data,
+  projectId,
+  busy,
+  error,
+  save,
+  setBusy,
+  refresh,
+}: {
+  data: Data;
+  projectId: string;
+  busy: boolean;
+  error: string;
+  save: Save;
+  setBusy: (v: boolean) => void;
+  refresh: () => Promise<void>;
+}) {
+  const drawings = data.drawings.filter((d) => projectId === 'all' || d.projectId === projectId);
+  const [drawingId, setDrawingId] = useState(''),
+    [versionId, setVersionId] = useState(''),
+    [page, setPage] = useState(1),
+    [zoom, setZoom] = useState(100),
+    [selectedId, setSelectedId] = useState(''),
+    [upload, setUpload] = useState<'new' | 'version' | null>(null),
+    [placing, setPlacing] = useState(false),
+    [point, setPoint] = useState<{ x: number; y: number } | null>(null),
+    [filter, setFilter] = useState('pending'),
+    [search, setSearch] = useState('');
+  const drawing = drawings.find((d) => d.id === drawingId) || drawings[0],
+    version = drawing?.versions.find((v) => v.id === versionId) || drawing?.versions[0];
+  const ids = new Set(drawing?.versions.map((v) => v.id));
+  const issues = data.planIssues.filter((i) => ids.has(i.versionId)),
+    selected = issues.find((i) => i.id === selectedId),
+    selectedVersion = drawing?.versions.find((v) => v.id === selected?.versionId);
+  const pending = issues.filter((i) => i.status !== 'RESOLVED'),
+    oldPending = pending.filter((i) => i.versionId !== drawing?.versions[0]?.id);
+  const can = useCan();
+  const writable = can('plans') && drawing?.project.status === 'ACTIVE';
+  function resetView() {
+    setPage(1);
+    setSelectedId('');
+    setPoint(null);
+    setPlacing(false);
+    setZoom(100);
+  }
+  function selectIssue(i: PlanIssue) {
+    setSelectedId(i.id);
+    setVersionId(i.versionId);
+    setPage(i.page);
+    setPoint(null);
+    setPlacing(false);
+  }
+  const visible = issues.filter(
+    (i) =>
+      (filter === 'all' ||
+        (filter === 'pending' && i.status !== 'RESOLVED') ||
+        i.status === filter) &&
+      [i.title, i.assignee, 'INC-' + i.number]
+        .join(' ')
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
+  const errorAnchor = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error) errorAnchor.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [error]);
+
+  const activeAvailable =
+    can('plans') &&
+    data.projects.some((p) => p.status === 'ACTIVE' && (projectId === 'all' || p.id === projectId));
+  return (
+    <div className="plans-module">
+      <div className="plans-actions">
+        <p className="small-note">
+          Planos por obra, versiones conservadas y pendientes con ubicación.
+        </p>
+        <button
+          className="primary"
+          disabled={busy || !activeAvailable}
+          onClick={() => {
+            setUpload('new');
+            setPoint(null);
+            setPlacing(false);
+          }}
+        >
+          <Plus size={16} />
+          Registrar plano
+        </button>
+      </div>
+      {error && (
+        <div ref={errorAnchor} className="error plan-anchor" role="alert">
+          {error}
+          <button className="text-button" disabled={busy} onClick={() => refresh().catch(() => {})}>
+            <RefreshCw size={14} />
+            Actualizar datos
+          </button>
+        </div>
+      )}
+      {upload && (
+        <EntryModal
+          title={upload === 'new' ? 'Registrar plano' : 'Nueva versión de plano'}
+          busy={busy}
+          error={error}
+          onClose={() => setUpload(null)}
+        >
+          <PlanUpload
+            key={upload + (drawing?.id || '')}
+            data={data}
+            projectId={projectId}
+            drawing={upload === 'version' ? drawing : undefined}
+            busy={busy}
+            save={save}
+            setBusy={setBusy}
+            onCancel={() => setUpload(null)}
+            onDone={() => {
+              setUpload(null);
+              if (upload === 'new') setDrawingId('');
+              setVersionId('');
+              resetView();
+            }}
+          />
+        </EntryModal>
+      )}
+      {!drawings.length && !upload && (
+        <div className="panel empty">
+          <Layers size={30} />
+          <h3>Aún no hay planos en esta vista</h3>
+          <p>Registra un PDF para ubicar incidencias y seguir su resolución.</p>
+        </div>
+      )}
+      {drawing && version && (
+        <>
+          <div className="panel plan-selection">
+            <Field label="Plano de trabajo">
+              <select
+                value={drawing.id}
+                disabled={busy}
+                onChange={(e) => {
+                  setDrawingId(e.target.value);
+                  setVersionId('');
+                  setUpload(null);
+                  resetView();
+                }}
+              >
+                {drawings.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.project.code} · {d.code} · {d.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div>
+              <span className="eyebrow">{drawing.project.name}</span>
+              <h2>
+                {drawing.code} · {drawing.name}
+              </h2>
+              <p>
+                {drawing.versions.length} versiones · {pending.length} pendientes ·{' '}
+                {issues.filter((i) => i.status === 'RESOLVED').length} resueltas
+              </p>
+            </div>
+          </div>
+          {oldPending.length > 0 && (
+            <div className="plan-notice">
+              <Layers size={18} />
+              <p>
+                <strong>{oldPending.length} pendientes en versiones anteriores.</strong> Siguen en
+                la lista de incidencias. Selecciona uno para abrir su versión y ubicación
+                originales.
+              </p>
+            </div>
+          )}
+          <section id="current-plan-view" className="panel plan-workspace plan-anchor">
+            <div className="plan-tools">
+              <Field label="Versión del plano">
+                <select
+                  value={version.id}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setVersionId(e.target.value);
+                    resetView();
+                  }}
+                >
+                  {drawing.versions.map((v, index) => (
+                    <option key={v.id} value={v.id}>
+                      v{v.number} · {v.label}
+                      {index === 0 ? ' · más reciente' : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <button
+                className="secondary"
+                disabled={busy || !writable}
+                onClick={() => {
+                  setUpload('version');
+                  setPoint(null);
+                  setPlacing(false);
+                }}
+              >
+                <Upload size={15} />
+                Nueva versión
+              </button>
+              <a
+                className="secondary"
+                href={`/api/drawings/${drawing.id}/versions/${version.id}/file`}
+              >
+                <Download size={15} />
+                PDF original
+              </a>
+            </div>
+            <p className="version-description">
+              {version.note}{' '}
+              <span>
+                · {version.author} · {timestamp(version.createdAt)}
+              </span>
+            </p>
+            {version.id !== drawing.versions[0]?.id && (
+              <p className="plan-old">
+                Consultando una versión anterior. Sus marcadores no se trasladan a la revisión
+                nueva.
+              </p>
+            )}
+            <div className="plan-page-tools">
+              <button
+                className="icon-button"
+                aria-label="Página anterior"
+                disabled={page <= 1 || busy}
+                onClick={() => {
+                  setPage(page - 1);
+                  setPoint(null);
+                  setPlacing(false);
+                }}
+              >
+                <ArrowLeft size={17} />
+              </button>
+              <Field label="Página del plano">
+                <select
+                  value={page}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setPage(Number(e.target.value));
+                    setPoint(null);
+                    setPlacing(false);
+                  }}
+                >
+                  {Array.from({ length: version.pageCount }, (_, i) => (
+                    <option key={i} value={i + 1}>
+                      Página {i + 1} de {version.pageCount}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <button
+                className="icon-button"
+                aria-label="Página siguiente"
+                disabled={page >= version.pageCount || busy}
+                onClick={() => {
+                  setPage(page + 1);
+                  setPoint(null);
+                  setPlacing(false);
+                }}
+              >
+                <ArrowRight size={17} />
+              </button>
+              <Field label="Ampliación">
+                <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))}>
+                  <option value="100">Ajustar ancho</option>
+                  <option value="150">150 %</option>
+                  <option value="200">200 %</option>
+                </select>
+              </Field>
+              <button
+                className={placing ? 'primary' : 'secondary'}
+                disabled={busy || !writable}
+                onClick={() => {
+                  setPlacing(!placing);
+                  setPoint(null);
+                  setSelectedId('');
+                }}
+              >
+                <MapPin size={15} />
+                {placing ? 'Cancelar ubicación' : 'Marcar incidencia'}
+              </button>
+            </div>
+            {placing && (
+              <div className="plan-notice">
+                <p>
+                  Pulsa sobre la página para ubicar el pendiente, o{' '}
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setPoint({ x: 0.5, y: 0.5 });
+                      setPlacing(false);
+                    }}
+                  >
+                    ingresa la ubicación por porcentaje
+                  </button>
+                  .
+                </p>
+              </div>
+            )}
+            <PlanViewer
+              key={version.id + ':' + page}
+              drawingId={drawing.id}
+              version={version}
+              page={page}
+              zoom={zoom}
+              issues={issues.filter((i) => i.versionId === version.id && i.page === page)}
+              selectedId={selectedId}
+              placing={placing && !busy}
+              onSelect={selectIssue}
+              onPlace={(p) => {
+                setPoint(p);
+                setPlacing(false);
+              }}
+            />
+            <p className="plan-legend">
+              <span className="issue-status OPEN">Abierta</span>
+              <span className="issue-status IN_PROGRESS">En atención</span>
+              <span className="issue-status RESOLVED">Resuelta</span>
+              <span>Marcadores de esta página y versión</span>
+            </p>
+          </section>
+          {point && (
+            <EntryModal
+              title="Nueva incidencia"
+              busy={busy}
+              error={error}
+              onClose={() => setPoint(null)}
+            >
+              <NewIssue
+                key={version.id + ':' + page + ':' + point.x + ':' + point.y}
+                drawing={drawing}
+                version={version}
+                page={page}
+                point={point}
+                busy={busy}
+                save={save}
+                onCancel={() => setPoint(null)}
+                onDone={() => setPoint(null)}
+              />
+            </EntryModal>
+          )}
+          <div className="plan-bottom">
+            <section className="panel issue-list">
+              <div className="panel-head">
+                <div>
+                  <h2>Incidencias del plano</h2>
+                  <p>Todas las versiones · selecciona para ubicar y dar seguimiento</p>
+                </div>
+              </div>
+              <div className="issue-filters">
+                <input
+                  aria-label="Buscar incidencia o responsable"
+                  placeholder="Buscar incidencia o responsable…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <select
+                  aria-label="Filtrar incidencias"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                >
+                  <option value="pending">Pendientes</option>
+                  <option value="all">Todas</option>
+                  <option value="OPEN">Abiertas</option>
+                  <option value="IN_PROGRESS">En atención</option>
+                  <option value="RESOLVED">Resueltas</option>
+                </select>
+              </div>
+              {!visible.length && (
+                <div className="empty">
+                  <Check size={24} />
+                  <h3>Sin incidencias en este filtro</h3>
+                  <p>Usa «Marcar incidencia» sobre el plano para registrar un pendiente.</p>
+                </div>
+              )}
+              {visible.map((i) => (
+                <button
+                  key={i.id}
+                  className={'issue-row ' + (selectedId === i.id ? 'selected' : '')}
+                  disabled={busy}
+                  onClick={() => selectIssue(i)}
+                >
+                  <div className="issue-row-top">
+                    <strong>INC-{i.number}</strong>
+                    <span className={'issue-status ' + i.status}>{statusLabel[i.status]}</span>
+                  </div>
+                  <h3>{i.title}</h3>
+                  <p>
+                    {i.assignee} · vence {i.dueDate.slice(0, 10)}
+                  </p>
+                  <small>
+                    v{drawing.versions.find((v) => v.id === i.versionId)?.number} · página {i.page}{' '}
+                    · prioridad {priorityLabel[i.priority].toLowerCase()}
+                    {i.status !== 'RESOLVED' && i.dueDate.slice(0, 10) < today()
+                      ? ' · VENCIDA'
+                      : ''}
+                  </small>
+                </button>
+              ))}
+            </section>
+            {selected && selectedVersion && (
+              <EntryModal
+                title={'Incidencia INC-' + selected.number}
+                busy={busy}
+                error={error}
+                onClose={() => setSelectedId('')}
+              >
+                <button
+                  className="secondary locate-issue"
+                  disabled={busy}
+                  onClick={() => {
+                    setSelectedId('');
+                    document
+                      .getElementById('current-plan-view')
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
+                  <MapPin size={15} />
+                  Ver marcador en el plano
+                </button>
+                <IssueDetail
+                  key={selected.id + ':' + selected.revision}
+                  issue={selected}
+                  version={selectedVersion}
+                  drawing={drawing}
+                  busy={busy}
+                  save={save}
+                  setBusy={setBusy}
+                  onClose={() => setSelectedId('')}
+                />
+              </EntryModal>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

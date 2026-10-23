@@ -1,69 +1,729 @@
 'use client';
-import {useCan} from './access';
-import {useEffect,useRef,useState,FormEvent} from 'react';
-import {Plus,Check,History,RefreshCw,ArrowRight,X,LockKeyhole} from 'lucide-react';
-import type {Data,Project,ChangeRequest,ChangeProposal} from './types';
-type Save=(path:string,body:unknown,message:string)=>Promise<boolean>;
-const money=(n:string|number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(n));
-const day=(d:string)=>d.slice(0,10);
-const time=(d:string)=>new Date(d).toLocaleString('es-MX',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Mexico_City'});
-const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Mexico_City'});
-export const changeLabels:Record<string,string>={DRAFT:'Borrador',SUBMITTED:'Por autorizar',APPROVED:'Aprobado',REJECTED:'Rechazado',CANCELLED:'Cancelado'};
-const actionLabels:Record<string,string>={CREATED:'Solicitud creada',REVISE:'Nueva revisión',SUBMIT:'Enviado a autorización',APPROVE:'Autorización registrada',REJECT:'Propuesta rechazada',CANCEL:'Solicitud cancelada',PROGRESS:'Avance registrado',SETTLEMENT:'Cobro / crédito registrado'};
-function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="field"><span>{label}</span>{children}</label>;}
-function ProposalFields({proposal}:{proposal?:ChangeProposal}){return <><Field label="Alcance propuesto"><textarea name="scope" required rows={3} maxLength={5000} defaultValue={proposal?.scope} placeholder="Describe lo que se agrega, modifica o retira"/></Field><div className="form-grid"><Field label="Variación de costo directo (MXN)"><input name="costDelta" type="number" step=".01" min="-100000000" max="100000000" required defaultValue={proposal?.costDelta||'0'}/></Field><Field label="Variación del importe al cliente (MXN)"><input name="priceDelta" type="number" step=".01" min="-100000000" max="100000000" required defaultValue={proposal?.priceDelta||'0'}/></Field><Field label="Variación del plazo (días naturales)"><input name="daysDelta" type="number" min="-3650" max="3650" step="1" required defaultValue={proposal?.daysDelta||0}/></Field></div><p className="small-note">Usa valores positivos para aumentos y negativos para reducciones. El costo ajusta el presupuesto directo; el importe al cliente se controla por separado. Importes sin impuestos.</p></>;}
-function proposalValues(v:Record<string,FormDataEntryValue>){return {scope:v.scope,costDelta:v.costDelta,priceDelta:v.priceDelta,daysDelta:Number(v.daysDelta)};}
-export function BudgetAdjustment({project:p}:{project:Project}){
- const s=p.changeSummary;if(!s)return null;
- return <div className="budget-adjustment"><div className="mini-stats"><div><span>Línea base directa</span><strong>{money(s.baseBudget)}</strong></div><div><span>Cambios aprobados · costo</span><strong>{money(s.approvedCostDelta)}</strong></div><div><span>Presupuesto directo ajustado</span><strong>{money(s.adjustedBudget)}</strong></div></div><p>Término base: <strong>{day(p.endDate)}</strong> · Variación autorizada: <strong>{s.approvedDaysDelta>0?'+':''}{s.approvedDaysDelta} días</strong> · Término ajustado: <strong>{day(s.adjustedEndDate)}</strong></p></div>;
+import { EntryModal } from './entry-modal';
+import { useCan } from './access';
+import { useEffect, useRef, useState, FormEvent } from 'react';
+import { Plus, Check, History, RefreshCw, ArrowRight, X, LockKeyhole } from 'lucide-react';
+import type { Data, Project, ChangeRequest, ChangeProposal } from './types';
+type Save = (path: string, body: unknown, message: string) => Promise<boolean>;
+const money = (n: string | number) =>
+  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n));
+const day = (d: string) => d.slice(0, 10);
+const time = (d: string) =>
+  new Date(d).toLocaleString('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'America/Mexico_City',
+  });
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+export const changeLabels: Record<string, string> = {
+  DRAFT: 'Borrador',
+  SUBMITTED: 'Por autorizar',
+  APPROVED: 'Aprobado',
+  REJECTED: 'Rechazado',
+  CANCELLED: 'Cancelado',
+};
+const actionLabels: Record<string, string> = {
+  CREATED: 'Solicitud creada',
+  REVISE: 'Nueva revisión',
+  SUBMIT: 'Enviado a autorización',
+  APPROVE: 'Autorización registrada',
+  REJECT: 'Propuesta rechazada',
+  CANCEL: 'Solicitud cancelada',
+  PROGRESS: 'Avance registrado',
+  SETTLEMENT: 'Cobro / crédito registrado',
+};
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
 }
-function CreateChange({data,projectId,busy,save,onDone,onCancel}:{data:Data;projectId:string;busy:boolean;save:Save;onDone:()=>void;onCancel:()=>void}){
- async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const v=Object.fromEntries(new FormData(e.currentTarget));if(await save('changes',{projectId:v.projectId,title:v.title,reason:v.reason,proposal:proposalValues(v)},'Solicitud guardada en borrador'))onDone();}
- return <form className="panel change-form" onSubmit={submit}><div className="panel-head"><div><h2>Nueva solicitud de cambio</h2><p>La propuesta no modifica la línea base ni el plazo hasta aprobarse.</p></div><button className="icon-button" type="button" aria-label="Cancelar solicitud nueva" disabled={busy} onClick={onCancel}><X size={18}/></button></div><fieldset disabled={busy}><Field label="Obra del cambio"><select name="projectId" required defaultValue={projectId==='all'?data.projects.find(p=>p.status==='ACTIVE')?.id:projectId}>{data.projects.filter(p=>p.status==='ACTIVE'&&(projectId==='all'||p.id===projectId)).map(p=><option value={p.id} key={p.id}>{p.code} · {p.name}</option>)}</select></Field><Field label="Título del cambio"><input name="title" required maxLength={200} placeholder="Ej. Ampliación de acceso norte"/></Field><Field label="Motivo de la solicitud"><textarea name="reason" rows={2} required maxLength={5000}/></Field><ProposalFields/><div className="log-actions"><button type="button" className="secondary" onClick={onCancel}>Cancelar</button><button className="primary"><Plus size={15}/>Guardar solicitud</button></div></fieldset></form>;
+function ProposalFields({ proposal }: { proposal?: ChangeProposal }) {
+  return (
+    <>
+      <Field label="Alcance propuesto">
+        <textarea
+          name="scope"
+          required
+          rows={3}
+          maxLength={5000}
+          defaultValue={proposal?.scope}
+          placeholder="Describe lo que se agrega, modifica o retira"
+        />
+      </Field>
+      <div className="form-grid">
+        <Field label="Variación de costo directo (MXN)">
+          <input
+            name="costDelta"
+            type="number"
+            step=".01"
+            min="-100000000"
+            max="100000000"
+            required
+            defaultValue={proposal?.costDelta || '0'}
+          />
+        </Field>
+        <Field label="Variación del importe al cliente (MXN)">
+          <input
+            name="priceDelta"
+            type="number"
+            step=".01"
+            min="-100000000"
+            max="100000000"
+            required
+            defaultValue={proposal?.priceDelta || '0'}
+          />
+        </Field>
+        <Field label="Variación del plazo (días naturales)">
+          <input
+            name="daysDelta"
+            type="number"
+            min="-3650"
+            max="3650"
+            step="1"
+            required
+            defaultValue={proposal?.daysDelta || 0}
+          />
+        </Field>
+      </div>
+      <p className="small-note">
+        Usa valores positivos para aumentos y negativos para reducciones. El costo ajusta el
+        presupuesto directo; el importe al cliente se controla por separado. Importes sin impuestos.
+      </p>
+    </>
+  );
 }
-function ChangeDetail({change:c,busy,save}:{change:ChangeRequest;busy:boolean;save:Save}){
- const can=useCan();const [action,setAction]=useState(''),p=c.proposals[0],active=c.project.status==='ACTIVE',credit=c.settlementKind==='CREDIT';
- async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const v=Object.fromEntries(new FormData(e.currentTarget));
- const body={action,expectedRevision:c.revision,note:v.note,...(action==='REVISE'?{proposal:proposalValues(v)}:{}),...(action==='PROGRESS'?{progress:Number(v.progress)}:{}),...(action==='APPROVE'?{authorizationBy:v.authorizationBy,authorizationReference:v.authorizationReference}:{}),...(action==='SETTLEMENT'?{amount:v.amount,date:v.date,reference:v.reference}:{})};
- if(await save('changes/'+c.id+'/actions',body,'Seguimiento del cambio guardado'))setAction('');
- }
- const permittedActions=c.status==='DRAFT'?['REVISE','SUBMIT','CANCEL']:c.status==='SUBMITTED'?['APPROVE','REJECT','CANCEL']:c.status==='REJECTED'?['REVISE','CANCEL']:c.status==='APPROVED'?['PROGRESS',...(Number(c.outstanding)>0?['SETTLEMENT']:[])]:[];
- const allowed=permittedActions.filter(a=>can(a==='SETTLEMENT'?'payments':['APPROVE','REJECT'].includes(a)?'approveChange':'changes'));
- const buttons:Record<string,string>={REVISE:'Crear revisión',SUBMIT:'Enviar a autorización',APPROVE:'Registrar aprobación',REJECT:'Rechazar propuesta',CANCEL:'Cancelar solicitud',PROGRESS:'Registrar avance',SETTLEMENT:credit?'Registrar crédito aplicado':'Registrar cobro'};
- return <section className="panel change-detail"><span className="eyebrow">{c.project.code} · CAM-{c.number} · REVISIÓN {p.number}</span><div className="change-detail-heading"><h2>{c.title}</h2><span className={'change-status '+c.status}>{changeLabels[c.status]}</span></div><p className="small-note">{c.project.name} · Solicitó {c.author} · {time(c.createdAt)}</p><h3>Motivo</h3><p className="preserve">{c.reason}</p><h3>Propuesta vigente</h3><p className="preserve">{p.scope}</p><div className="change-amounts"><div><span>Variación de costo directo</span><strong>{money(p.costDelta)}</strong></div><div><span>Variación al cliente</span><strong>{money(p.priceDelta)}</strong></div><div><span>Impacto en plazo</span><strong>{p.daysDelta>0?'+':''}{p.daysDelta} días</strong></div></div>
-  {c.status==='APPROVED'?<><div className="change-notice"><LockKeyhole size={16}/><p>Revisión aprobada y fija. Una modificación posterior requiere otra solicitud de cambio.</p></div><div className="change-amounts"><div><span>Avance de ejecución</span><strong>{c.progress}%</strong></div><div><span>{credit?'Crédito aplicado':'Cobrado'}</span><strong>{money(c.applied)}</strong></div><div><span>{credit?'Crédito pendiente':'Por cobrar'}</span><strong>{money(c.outstanding)}</strong></div></div><div className="progress"><i style={{width:c.progress+'%'}}/></div></>:<p className="small-note">Esta propuesta no afecta los totales aprobados de la obra.</p>}
-  {active&&allowed.length>0&&<div className="change-action-buttons">{allowed.map(a=><button key={a} className={action===a?'primary':'secondary'} disabled={busy} onClick={()=>setAction(action===a?'':a)}>{buttons[a]}</button>)}</div>}
-  {action&&<form className="change-action-form" onSubmit={submit}><h3>{buttons[action]}</h3><fieldset disabled={busy}>
-   {action==='REVISE'&&<ProposalFields proposal={p}/>}
-   {action==='APPROVE'&&<><div className="change-notice"><p>Se autoriza la revisión {p.number}: {money(p.costDelta)} de costo directo, {money(p.priceDelta)} al cliente y {p.daysDelta} días. Se requiere una línea base de presupuesto aprobada.</p></div><Field label="Persona que autorizó"><input name="authorizationBy" required maxLength={200} placeholder="Nombre de quien emitió la autorización"/></Field><Field label="Referencia de autorización"><input name="authorizationReference" required maxLength={200} placeholder="Ej. convenio, folio o correo de autorización"/></Field><p className="small-note">Registro interno de una autorización obtenida fuera de la aplicación. No envía documentos ni solicita firmas al cliente.</p></>}
-   {action==='SUBMIT'&&<p className="small-note">La revisión {p.number} quedará pendiente de decisión. Si necesita ajustes, recházala con motivo y crea una nueva revisión.</p>}
-   {action==='PROGRESS'&&<Field label="Avance ejecutado (%)"><input name="progress" type="number" min="0" max="100" step="1" required defaultValue={c.progress}/></Field>}
-   {action==='SETTLEMENT'&&<><Field label={credit?'Importe del crédito aplicado (MXN)':'Importe cobrado (MXN)'}><input name="amount" type="number" min=".01" max={c.outstanding} step=".01" required/></Field><div className="form-grid"><Field label="Fecha del movimiento"><input name="date" type="date" defaultValue={today()} required/></Field><Field label="Referencia única del movimiento"><input name="reference" required maxLength={200}/></Field></div><p className="small-note">Registra un movimiento ya realizado o un crédito ya aplicado. Esta acción no mueve dinero, emite facturas ni modifica pagos a proveedores.</p></>}
-   <Field label={action==='PROGRESS'?'Descripción del avance o corrección':'Motivo / observaciones'}><textarea name="note" required rows={3} maxLength={5000}/></Field><div className="log-actions"><button type="button" className="secondary" onClick={()=>setAction('')}>Volver</button><button className="primary"><Check size={15}/>Confirmar {buttons[action].toLowerCase()}</button></div>
-  </fieldset></form>}
-  <details className="change-history"><summary><History size={16}/>Revisiones conservadas ({c.proposals.length})</summary>{c.proposals.map(v=><article key={v.id}><strong>Revisión {v.number}{v.id===p.id?' · vigente':''}</strong><small>{v.author} · {time(v.createdAt)}</small><p className="preserve">{v.scope}</p><p>Costo: {money(v.costDelta)} · Cliente: {money(v.priceDelta)} · Plazo: {v.daysDelta} días</p></article>)}</details>
-  <h3>Historial de decisiones y avance</h3><div className="issue-history">{c.events.map(e=><article key={e.id}><strong>{actionLabels[e.action]} · revisión {e.proposalNumber}</strong><small>Registró {e.actor} · {time(e.createdAt)}</small><p className="preserve">{e.note}</p>{e.authorizationBy&&<p>Autorizó: {e.authorizationBy} · Referencia: {e.authorizationReference}</p>}{e.progress!==null&&<p>Avance registrado: {e.progress}%</p>}</article>)}</div>
-  {c.settlements.length>0&&<><h3>{credit?'Créditos aplicados':'Cobros registrados'}</h3><div className="issue-history">{c.settlements.map(s=><article key={s.id}><strong>{money(s.amount)} · {s.reference}</strong><small>{day(s.date)} · registró {s.actor}</small><p className="preserve">{s.note}</p></article>)}</div></>}
- </section>;
+function proposalValues(v: Record<string, FormDataEntryValue>) {
+  return {
+    scope: v.scope,
+    costDelta: v.costDelta,
+    priceDelta: v.priceDelta,
+    daysDelta: Number(v.daysDelta),
+  };
 }
-export function ChangesPanel({data,projectId,busy,error,save,refresh}:{data:Data;projectId:string;busy:boolean;error:string;save:Save;refresh:()=>Promise<void>}){
- const can=useCan();
- const [create,setCreate]=useState(false),[selectedId,setSelectedId]=useState(''),[filter,setFilter]=useState('all'),[search,setSearch]=useState('');
- const formAnchor=useRef<HTMLDivElement>(null),detailAnchor=useRef<HTMLDivElement>(null),errorAnchor=useRef<HTMLDivElement>(null);
- const projects=data.projects.filter(p=>projectId==='all'||p.id===projectId),changes=data.changes.filter(c=>projectId==='all'||c.projectId===projectId),selected=changes.find(c=>c.id===selectedId);
- useEffect(()=>{if(create)formAnchor.current?.scrollIntoView({block:'start',behavior:'smooth'});},[create]);
- useEffect(()=>{if(selectedId)detailAnchor.current?.scrollIntoView({block:'start',behavior:'smooth'});},[selectedId]);
- useEffect(()=>{if(error)errorAnchor.current?.scrollIntoView({block:'start',behavior:'smooth'});},[error]);
- const visible=changes.filter(c=>(filter==='all'||c.status===filter)&&[c.title,c.project.name,'CAM-'+c.number].join(' ').toLowerCase().includes(search.toLowerCase()));
- return <div className="changes-module"><div className="plans-actions"><p className="small-note">Proponer → autorizar → ejecutar → registrar cobro o crédito.</p><button className="primary" disabled={busy||!can('changes')||!projects.some(p=>p.status==='ACTIVE')} onClick={()=>setCreate(true)}><Plus size={16}/>Solicitar cambio</button></div>
-  {error&&<div ref={errorAnchor} className="error plan-anchor" role="alert">{error}<button className="text-button" disabled={busy} onClick={refresh}><RefreshCw size={14}/>Actualizar datos</button></div>}
-  <div className="mini-stats"><div><span>Línea base · costo directo</span><strong>{money(projects.reduce((n,p)=>n+Number(p.changeSummary.baseBudget),0))}</strong></div><div><span>Cambios aprobados · costo</span><strong>{money(projects.reduce((n,p)=>n+Number(p.changeSummary.approvedCostDelta),0))}</strong></div><div><span>Costo directo ajustado</span><strong>{money(projects.reduce((n,p)=>n+Number(p.changeSummary.adjustedBudget),0))}</strong></div></div>
-  <p className="small-note">Las propuestas en borrador, rechazadas, canceladas o por autorizar quedan fuera del presupuesto ajustado.</p>
-  {projects.length===1&&<div className="change-notice"><p>Término base: {day(projects[0].endDate)} · Variación aprobada: {projects[0].changeSummary.approvedDaysDelta} días · <strong>Término ajustado: {day(projects[0].changeSummary.adjustedEndDate)}</strong></p></div>}
-  {create&&<div ref={formAnchor} className="plan-anchor"><CreateChange data={data} projectId={projectId} busy={busy} save={save} onCancel={()=>setCreate(false)} onDone={()=>{setCreate(false);setFilter('all');setSearch('');}}/></div>}
-  <div className={'changes-grid '+(selected?'with-detail':'')}><section className="panel change-list"><div className="panel-head"><div><h2>Solicitudes de cambio</h2><p>{changes.length} solicitudes en esta vista</p></div></div><div className="issue-filters"><input aria-label="Buscar cambio u obra" placeholder="Buscar cambio u obra…" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Estado del cambio" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Todos los estados</option>{Object.entries(changeLabels).map(([key,label])=><option value={key} key={key}>{label}</option>)}</select></div>
-  {!visible.length&&<div className="empty"><History size={26}/><h3>Sin cambios en este filtro</h3><p>Crea una solicitud o ajusta los filtros.</p></div>}
-  {visible.map(c=><button className={'issue-row '+(selectedId===c.id?'selected':'')} key={c.id} disabled={busy} onClick={()=>{setSelectedId(c.id);setCreate(false);}}><div className="issue-row-top"><strong>CAM-{c.number} · rev. {c.proposals[0].number}</strong><span className={'change-status '+c.status}>{changeLabels[c.status]}</span></div><h3>{c.title}</h3><p>{c.project.code} · {c.project.name}</p><small>Costo {money(c.proposals[0].costDelta)} · {c.proposals[0].daysDelta>0?'+':''}{c.proposals[0].daysDelta} días</small>{c.status==='APPROVED'&&<p>{c.progress}% ejecutado · {money(c.outstanding)} {c.settlementKind==='CREDIT'?'de crédito pendiente':'por cobrar'}</p>}<span className="change-open">Ver solicitud <ArrowRight size={14}/></span></button>)}</section>
-  {selected&&<div className="plan-anchor" ref={detailAnchor}><ChangeDetail key={selected.id+':'+selected.revision} change={selected} busy={busy} save={save}/></div>}</div>
- </div>;
+export function BudgetAdjustment({ project: p }: { project: Project }) {
+  const s = p.changeSummary;
+  if (!s) return null;
+  return (
+    <div className="budget-adjustment">
+      <div className="mini-stats">
+        <div>
+          <span>Línea base directa</span>
+          <strong>{money(s.baseBudget)}</strong>
+        </div>
+        <div>
+          <span>Cambios aprobados · costo</span>
+          <strong>{money(s.approvedCostDelta)}</strong>
+        </div>
+        <div>
+          <span>Presupuesto directo ajustado</span>
+          <strong>{money(s.adjustedBudget)}</strong>
+        </div>
+      </div>
+      <p>
+        Término base: <strong>{day(p.endDate)}</strong> · Variación autorizada:{' '}
+        <strong>
+          {s.approvedDaysDelta > 0 ? '+' : ''}
+          {s.approvedDaysDelta} días
+        </strong>{' '}
+        · Término ajustado: <strong>{day(s.adjustedEndDate)}</strong>
+      </p>
+    </div>
+  );
+}
+function CreateChange({
+  data,
+  projectId,
+  busy,
+  save,
+  onDone,
+  onCancel,
+}: {
+  data: Data;
+  projectId: string;
+  busy: boolean;
+  save: Save;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(e.currentTarget));
+    if (
+      await save(
+        'changes',
+        { projectId: v.projectId, title: v.title, reason: v.reason, proposal: proposalValues(v) },
+        'Solicitud guardada en borrador',
+      )
+    )
+      onDone();
+  }
+  return (
+    <form className="panel change-form" onSubmit={submit}>
+      <div className="panel-head">
+        <div>
+          <h2>Nueva solicitud de cambio</h2>
+          <p>La propuesta no modifica la línea base ni el plazo hasta aprobarse.</p>
+        </div>
+        <button
+          className="icon-button"
+          type="button"
+          aria-label="Cancelar solicitud nueva"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <fieldset disabled={busy}>
+        <Field label="Obra del cambio">
+          <select
+            name="projectId"
+            required
+            defaultValue={
+              projectId === 'all' ? data.projects.find((p) => p.status === 'ACTIVE')?.id : projectId
+            }
+          >
+            {data.projects
+              .filter((p) => p.status === 'ACTIVE' && (projectId === 'all' || p.id === projectId))
+              .map((p) => (
+                <option value={p.id} key={p.id}>
+                  {p.code} · {p.name}
+                </option>
+              ))}
+          </select>
+        </Field>
+        <Field label="Título del cambio">
+          <input
+            name="title"
+            required
+            maxLength={200}
+            placeholder="Ej. Ampliación de acceso norte"
+          />
+        </Field>
+        <Field label="Motivo de la solicitud">
+          <textarea name="reason" rows={2} required maxLength={5000} />
+        </Field>
+        <ProposalFields />
+        <div className="log-actions">
+          <button type="button" className="secondary" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button className="primary">
+            <Plus size={15} />
+            Guardar solicitud
+          </button>
+        </div>
+      </fieldset>
+    </form>
+  );
+}
+function ChangeDetail({
+  change: c,
+  busy,
+  save,
+}: {
+  change: ChangeRequest;
+  busy: boolean;
+  save: Save;
+}) {
+  const can = useCan();
+  const [action, setAction] = useState(''),
+    p = c.proposals[0],
+    active = c.project.status === 'ACTIVE',
+    credit = c.settlementKind === 'CREDIT';
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(e.currentTarget));
+    const body = {
+      action,
+      expectedRevision: c.revision,
+      note: v.note,
+      ...(action === 'REVISE' ? { proposal: proposalValues(v) } : {}),
+      ...(action === 'PROGRESS' ? { progress: Number(v.progress) } : {}),
+      ...(action === 'APPROVE'
+        ? { authorizationBy: v.authorizationBy, authorizationReference: v.authorizationReference }
+        : {}),
+      ...(action === 'SETTLEMENT'
+        ? { amount: v.amount, date: v.date, reference: v.reference }
+        : {}),
+    };
+    if (await save('changes/' + c.id + '/actions', body, 'Seguimiento del cambio guardado'))
+      setAction('');
+  }
+  const permittedActions =
+    c.status === 'DRAFT'
+      ? ['REVISE', 'SUBMIT', 'CANCEL']
+      : c.status === 'SUBMITTED'
+        ? ['APPROVE', 'REJECT', 'CANCEL']
+        : c.status === 'REJECTED'
+          ? ['REVISE', 'CANCEL']
+          : c.status === 'APPROVED'
+            ? ['PROGRESS', ...(Number(c.outstanding) > 0 ? ['SETTLEMENT'] : [])]
+            : [];
+  const allowed = permittedActions.filter((a) =>
+    can(
+      a === 'SETTLEMENT'
+        ? 'payments'
+        : ['APPROVE', 'REJECT'].includes(a)
+          ? 'approveChange'
+          : 'changes',
+    ),
+  );
+  const buttons: Record<string, string> = {
+    REVISE: 'Crear revisión',
+    SUBMIT: 'Enviar a autorización',
+    APPROVE: 'Registrar aprobación',
+    REJECT: 'Rechazar propuesta',
+    CANCEL: 'Cancelar solicitud',
+    PROGRESS: 'Registrar avance',
+    SETTLEMENT: credit ? 'Registrar crédito aplicado' : 'Registrar cobro',
+  };
+  return (
+    <section className="panel change-detail">
+      <span className="eyebrow">
+        {c.project.code} · CAM-{c.number} · REVISIÓN {p.number}
+      </span>
+      <div className="change-detail-heading">
+        <h2>{c.title}</h2>
+        <span className={'change-status ' + c.status}>{changeLabels[c.status]}</span>
+      </div>
+      <p className="small-note">
+        {c.project.name} · Solicitó {c.author} · {time(c.createdAt)}
+      </p>
+      <h3>Motivo</h3>
+      <p className="preserve">{c.reason}</p>
+      <h3>Propuesta vigente</h3>
+      <p className="preserve">{p.scope}</p>
+      <div className="change-amounts">
+        <div>
+          <span>Variación de costo directo</span>
+          <strong>{money(p.costDelta)}</strong>
+        </div>
+        <div>
+          <span>Variación al cliente</span>
+          <strong>{money(p.priceDelta)}</strong>
+        </div>
+        <div>
+          <span>Impacto en plazo</span>
+          <strong>
+            {p.daysDelta > 0 ? '+' : ''}
+            {p.daysDelta} días
+          </strong>
+        </div>
+      </div>
+      {c.status === 'APPROVED' ? (
+        <>
+          <div className="change-notice">
+            <LockKeyhole size={16} />
+            <p>
+              Revisión aprobada y fija. Una modificación posterior requiere otra solicitud de
+              cambio.
+            </p>
+          </div>
+          <div className="change-amounts">
+            <div>
+              <span>Avance de ejecución</span>
+              <strong>{c.progress}%</strong>
+            </div>
+            <div>
+              <span>{credit ? 'Crédito aplicado' : 'Cobrado'}</span>
+              <strong>{money(c.applied)}</strong>
+            </div>
+            <div>
+              <span>{credit ? 'Crédito pendiente' : 'Por cobrar'}</span>
+              <strong>{money(c.outstanding)}</strong>
+            </div>
+          </div>
+          <div className="progress">
+            <i style={{ width: c.progress + '%' }} />
+          </div>
+        </>
+      ) : (
+        <p className="small-note">Esta propuesta no afecta los totales aprobados de la obra.</p>
+      )}
+      {active && allowed.length > 0 && (
+        <div className="change-action-buttons">
+          {allowed.map((a) => (
+            <button
+              key={a}
+              className={action === a ? 'primary' : 'secondary'}
+              disabled={busy}
+              onClick={() => setAction(action === a ? '' : a)}
+            >
+              {buttons[a]}
+            </button>
+          ))}
+        </div>
+      )}
+      {action && (
+        <form className="change-action-form" onSubmit={submit}>
+          <h3>{buttons[action]}</h3>
+          <fieldset disabled={busy}>
+            {action === 'REVISE' && <ProposalFields proposal={p} />}
+            {action === 'APPROVE' && (
+              <>
+                <div className="change-notice">
+                  <p>
+                    Se autoriza la revisión {p.number}: {money(p.costDelta)} de costo directo,{' '}
+                    {money(p.priceDelta)} al cliente y {p.daysDelta} días. Se requiere una línea
+                    base de presupuesto aprobada.
+                  </p>
+                </div>
+                <Field label="Persona que autorizó">
+                  <input
+                    name="authorizationBy"
+                    required
+                    maxLength={200}
+                    placeholder="Nombre de quien emitió la autorización"
+                  />
+                </Field>
+                <Field label="Referencia de autorización">
+                  <input
+                    name="authorizationReference"
+                    required
+                    maxLength={200}
+                    placeholder="Ej. convenio, folio o correo de autorización"
+                  />
+                </Field>
+                <p className="small-note">
+                  Registro interno de una autorización obtenida fuera de la aplicación. No envía
+                  documentos ni solicita firmas al cliente.
+                </p>
+              </>
+            )}
+            {action === 'SUBMIT' && (
+              <p className="small-note">
+                La revisión {p.number} quedará pendiente de decisión. Si necesita ajustes, recházala
+                con motivo y crea una nueva revisión.
+              </p>
+            )}
+            {action === 'PROGRESS' && (
+              <Field label="Avance ejecutado (%)">
+                <input
+                  name="progress"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  required
+                  defaultValue={c.progress}
+                />
+              </Field>
+            )}
+            {action === 'SETTLEMENT' && (
+              <>
+                <Field
+                  label={credit ? 'Importe del crédito aplicado (MXN)' : 'Importe cobrado (MXN)'}
+                >
+                  <input
+                    name="amount"
+                    type="number"
+                    min=".01"
+                    max={c.outstanding}
+                    step=".01"
+                    required
+                  />
+                </Field>
+                <div className="form-grid">
+                  <Field label="Fecha del movimiento">
+                    <input name="date" type="date" defaultValue={today()} required />
+                  </Field>
+                  <Field label="Referencia única del movimiento">
+                    <input name="reference" required maxLength={200} />
+                  </Field>
+                </div>
+                <p className="small-note">
+                  Registra un movimiento ya realizado o un crédito ya aplicado. Esta acción no mueve
+                  dinero, emite facturas ni modifica pagos a proveedores.
+                </p>
+              </>
+            )}
+            <Field
+              label={
+                action === 'PROGRESS'
+                  ? 'Descripción del avance o corrección'
+                  : 'Motivo / observaciones'
+              }
+            >
+              <textarea name="note" required rows={3} maxLength={5000} />
+            </Field>
+            <div className="log-actions">
+              <button type="button" className="secondary" onClick={() => setAction('')}>
+                Volver
+              </button>
+              <button className="primary">
+                <Check size={15} />
+                Confirmar {buttons[action].toLowerCase()}
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      )}
+      <details className="change-history">
+        <summary>
+          <History size={16} />
+          Revisiones conservadas ({c.proposals.length})
+        </summary>
+        {c.proposals.map((v) => (
+          <article key={v.id}>
+            <strong>
+              Revisión {v.number}
+              {v.id === p.id ? ' · vigente' : ''}
+            </strong>
+            <small>
+              {v.author} · {time(v.createdAt)}
+            </small>
+            <p className="preserve">{v.scope}</p>
+            <p>
+              Costo: {money(v.costDelta)} · Cliente: {money(v.priceDelta)} · Plazo: {v.daysDelta}{' '}
+              días
+            </p>
+          </article>
+        ))}
+      </details>
+      <h3>Historial de decisiones y avance</h3>
+      <div className="issue-history">
+        {c.events.map((e) => (
+          <article key={e.id}>
+            <strong>
+              {actionLabels[e.action]} · revisión {e.proposalNumber}
+            </strong>
+            <small>
+              Registró {e.actor} · {time(e.createdAt)}
+            </small>
+            <p className="preserve">{e.note}</p>
+            {e.authorizationBy && (
+              <p>
+                Autorizó: {e.authorizationBy} · Referencia: {e.authorizationReference}
+              </p>
+            )}
+            {e.progress !== null && <p>Avance registrado: {e.progress}%</p>}
+          </article>
+        ))}
+      </div>
+      {c.settlements.length > 0 && (
+        <>
+          <h3>{credit ? 'Créditos aplicados' : 'Cobros registrados'}</h3>
+          <div className="issue-history">
+            {c.settlements.map((s) => (
+              <article key={s.id}>
+                <strong>
+                  {money(s.amount)} · {s.reference}
+                </strong>
+                <small>
+                  {day(s.date)} · registró {s.actor}
+                </small>
+                <p className="preserve">{s.note}</p>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+export function ChangesPanel({
+  data,
+  projectId,
+  busy,
+  error,
+  save,
+  refresh,
+}: {
+  data: Data;
+  projectId: string;
+  busy: boolean;
+  error: string;
+  save: Save;
+  refresh: () => Promise<void>;
+}) {
+  const can = useCan();
+  const [create, setCreate] = useState(false),
+    [selectedId, setSelectedId] = useState(''),
+    [filter, setFilter] = useState('all'),
+    [search, setSearch] = useState('');
+  const errorAnchor = useRef<HTMLDivElement>(null);
+  const projects = data.projects.filter((p) => projectId === 'all' || p.id === projectId),
+    changes = data.changes.filter((c) => projectId === 'all' || c.projectId === projectId),
+    selected = changes.find((c) => c.id === selectedId);
+
+  useEffect(() => {
+    if (error) errorAnchor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [error]);
+  const visible = changes.filter(
+    (c) =>
+      (filter === 'all' || c.status === filter) &&
+      [c.title, c.project.name, 'CAM-' + c.number]
+        .join(' ')
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
+  return (
+    <div className="changes-module">
+      <div className="plans-actions">
+        <p className="small-note">Proponer → autorizar → ejecutar → registrar cobro o crédito.</p>
+        <button
+          className="primary"
+          disabled={busy || !can('changes') || !projects.some((p) => p.status === 'ACTIVE')}
+          onClick={() => setCreate(true)}
+        >
+          <Plus size={16} />
+          Solicitar cambio
+        </button>
+      </div>
+      {error && (
+        <div ref={errorAnchor} className="error plan-anchor" role="alert">
+          {error}
+          <button className="text-button" disabled={busy} onClick={refresh}>
+            <RefreshCw size={14} />
+            Actualizar datos
+          </button>
+        </div>
+      )}
+      <div className="mini-stats">
+        <div>
+          <span>Línea base · costo directo</span>
+          <strong>
+            {money(projects.reduce((n, p) => n + Number(p.changeSummary.baseBudget), 0))}
+          </strong>
+        </div>
+        <div>
+          <span>Cambios aprobados · costo</span>
+          <strong>
+            {money(projects.reduce((n, p) => n + Number(p.changeSummary.approvedCostDelta), 0))}
+          </strong>
+        </div>
+        <div>
+          <span>Costo directo ajustado</span>
+          <strong>
+            {money(projects.reduce((n, p) => n + Number(p.changeSummary.adjustedBudget), 0))}
+          </strong>
+        </div>
+      </div>
+      <p className="small-note">
+        Las propuestas en borrador, rechazadas, canceladas o por autorizar quedan fuera del
+        presupuesto ajustado.
+      </p>
+      {projects.length === 1 && (
+        <div className="change-notice">
+          <p>
+            Término base: {day(projects[0].endDate)} · Variación aprobada:{' '}
+            {projects[0].changeSummary.approvedDaysDelta} días ·{' '}
+            <strong>Término ajustado: {day(projects[0].changeSummary.adjustedEndDate)}</strong>
+          </p>
+        </div>
+      )}
+      {create && (
+        <EntryModal
+          title="Solicitar cambio"
+          busy={busy}
+          error={error}
+          onClose={() => setCreate(false)}
+        >
+          <CreateChange
+            data={data}
+            projectId={projectId}
+            busy={busy}
+            save={save}
+            onCancel={() => setCreate(false)}
+            onDone={() => {
+              setCreate(false);
+              setFilter('all');
+              setSearch('');
+            }}
+          />
+        </EntryModal>
+      )}
+      <div className="changes-grid">
+        <section className="panel change-list">
+          <div className="panel-head">
+            <div>
+              <h2>Solicitudes de cambio</h2>
+              <p>{changes.length} solicitudes en esta vista</p>
+            </div>
+          </div>
+          <div className="issue-filters">
+            <input
+              aria-label="Buscar cambio u obra"
+              placeholder="Buscar cambio u obra…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              aria-label="Estado del cambio"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
+              <option value="all">Todos los estados</option>
+              {Object.entries(changeLabels).map(([key, label]) => (
+                <option value={key} key={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {!visible.length && (
+            <div className="empty">
+              <History size={26} />
+              <h3>Sin cambios en este filtro</h3>
+              <p>Crea una solicitud o ajusta los filtros.</p>
+            </div>
+          )}
+          {visible.map((c) => (
+            <button
+              className={'issue-row ' + (selectedId === c.id ? 'selected' : '')}
+              key={c.id}
+              disabled={busy}
+              onClick={() => {
+                setSelectedId(c.id);
+                setCreate(false);
+              }}
+            >
+              <div className="issue-row-top">
+                <strong>
+                  CAM-{c.number} · rev. {c.proposals[0].number}
+                </strong>
+                <span className={'change-status ' + c.status}>{changeLabels[c.status]}</span>
+              </div>
+              <h3>{c.title}</h3>
+              <p>
+                {c.project.code} · {c.project.name}
+              </p>
+              <small>
+                Costo {money(c.proposals[0].costDelta)} · {c.proposals[0].daysDelta > 0 ? '+' : ''}
+                {c.proposals[0].daysDelta} días
+              </small>
+              {c.status === 'APPROVED' && (
+                <p>
+                  {c.progress}% ejecutado · {money(c.outstanding)}{' '}
+                  {c.settlementKind === 'CREDIT' ? 'de crédito pendiente' : 'por cobrar'}
+                </p>
+              )}
+              <span className="change-open">
+                Ver solicitud <ArrowRight size={14} />
+              </span>
+            </button>
+          ))}
+        </section>
+        {selected && (
+          <EntryModal
+            title={'Solicitud CAM-' + selected.number}
+            busy={busy}
+            error={error}
+            onClose={() => setSelectedId('')}
+          >
+            <ChangeDetail
+              key={selected.id + ':' + selected.revision}
+              change={selected}
+              busy={busy}
+              save={save}
+            />
+          </EntryModal>
+        )}
+      </div>
+    </div>
+  );
 }

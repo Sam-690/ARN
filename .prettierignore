@@ -1,0 +1,15 @@
+node_modules/
+.next/
+dist/
+.local/
+.git/
+.codex/
+.agents/
+output/
+tmp/
+test-results/
+package-lock.json
+apps/web/public/pdfjs/
+apps/web/next-env.d.ts
+apps/web/AGENTS.md
+prisma/migrations/
