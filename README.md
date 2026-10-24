@@ -131,7 +131,7 @@ La simulación no crea operaciones ni reservas. El modelo compara planificación
 
 ### Equipo, roles y permisos por obra
 
-En **Equipo y permisos**, Administración puede crear una cuenta con nombre, correo, perfil, obras y contraseña temporal (mínimo 12 caracteres). El usuario debe cambiarla en su primer acceso. No se envían correos automáticamente.
+En **Mi empresa → Equipo y permisos**, Administración puede crear una cuenta con nombre, correo, perfil, obras y contraseña temporal (mínimo 12 caracteres). El usuario debe cambiarla en su primer acceso. No se envían correos automáticamente.
 
 - **Administración:** todas las obras, catálogo, usuarios y operaciones.
 - **Responsable de obra:** presupuestos, aprobaciones, compras, almacén y seguimiento; no pagos ni usuarios.
@@ -162,3 +162,7 @@ El despliegue de la API debe conservar `apps/api/assets/fonts/` junto a `dist/` 
 Usa `npm run format` para aplicar Prettier al código, pruebas, estilos, configuración y documentación, y el formateador de Prisma al esquema. `npm run format:check` comprueba los archivos compatibles con Prettier sin modificarlos. El estilo utiliza dos espacios, comillas simples y líneas de aproximadamente 100 columnas. `.editorconfig` mantiene la indentación y los finales de línea al editar.
 
 Se excluyen dependencias, archivos generados, entregables y migraciones ya aplicadas. El generador auxiliar de mockups en Python usa cuatro espacios y Black (`black --line-length 100 design/mockups/build.py`); los scripts Bash conservan su sintaxis y bloques con indentación legible.
+
+### Organización por módulos
+
+La API separa sus rutas en `apps/api/src/modules/` y la interfaz agrupa vistas, formularios y detalles en `apps/web/app/features/`. Consulta [la guía de estructura del código](docs/ESTRUCTURA_DEL_CODIGO.md) para ubicar cada responsabilidad y revisar cómo extender y verificar los módulos.

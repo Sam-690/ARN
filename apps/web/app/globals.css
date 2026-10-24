@@ -4069,3 +4069,71 @@ dialog.entry-modal-wide {
     display: block;
   }
 }
+
+/* El directorio de obras es una vista independiente de los módulos de trabajo. */
+.projects-directory .main-shell {
+  margin-left: 0;
+  width: 100%;
+}
+
+.company-workspace {
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.company-workspace:hover {
+  background: var(--line);
+}
+
+/* El menú general y el de obra comparten el mismo contenedor plegable. */
+.desktop-menu {
+  display: inline-flex;
+}
+.sidebar-mobile-close {
+  display: none;
+}
+@media (min-width: 761px) {
+  .sidebar-collapsed .sidebar {
+    width: 76px;
+    padding: 28px 10px 0;
+  }
+  .sidebar-collapsed .main-shell {
+    margin-left: 76px;
+    width: calc(100% - 76px);
+  }
+  .sidebar-collapsed .sidebar-label,
+  .sidebar-collapsed .sidebar .nav-label,
+  .sidebar-collapsed .sidebar .pilot,
+  .sidebar-collapsed .sidebar .workspace-dot,
+  .sidebar-collapsed .sidebar .nav-count,
+  .sidebar-collapsed .profile > svg {
+    display: none;
+  }
+  .sidebar-collapsed .sidebar .brand {
+    margin: 0 auto 24px;
+  }
+  .sidebar-collapsed .company-workspace,
+  .sidebar-collapsed .sidebar nav button,
+  .sidebar-collapsed .profile {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .sidebar-collapsed .sidebar nav button {
+    min-height: 44px;
+  }
+}
+@media (max-width: 760px) {
+  .desktop-menu {
+    display: none;
+  }
+  .sidebar-mobile-close {
+    display: inline-flex;
+    position: absolute;
+    top: 12px;
+    right: 10px;
+  }
+}
